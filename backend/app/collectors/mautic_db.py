@@ -49,13 +49,23 @@ class MauticDBCollector:
     """Coleta métricas via conexão direta ao banco PostgreSQL do Mautic."""
 
     def __init__(self, host: str, port: int, dbname: str, user: str, password: str):
-        self.dsn = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
-        self.host = host
+        # Parâmetros armazenados separadamente — nunca montar DSN string com senha
+        # para evitar vazamento em logs e stack traces.
+        self._host = host
+        self._port = port
+        self._dbname = dbname
+        self._user = user
+        self._password = password
+        self.host = host  # mantido para uso em mensagens de log
 
     async def _connect(self):
         """Cria conexão asyncpg com timeout configurável."""
         return await asyncpg.connect(
-            self.dsn,
+            host=self._host,
+            port=self._port,
+            database=self._dbname,
+            user=self._user,
+            password=self._password,
             timeout=settings.mautic_timeout_seconds,
         )
 

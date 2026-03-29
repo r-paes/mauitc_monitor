@@ -8,6 +8,8 @@ Jobs registrados:
   4. collect_mautic_db      — a cada MAUTIC_DB_COLLECT_INTERVAL_MINUTES
   5. collect_vps_ssh        — a cada VPS_COLLECT_INTERVAL_MINUTES
   6. run_alert_engine       — a cada ALERT_ENGINE_INTERVAL_SECONDS segundos
+  7. generate_reports_am    — cron diário HH:00 BRT (REPORT_CRON_MORNING)
+  8. generate_reports_pm    — cron diário HH:00 BRT (REPORT_CRON_EVENING)
 """
 
 import logging
@@ -28,7 +30,11 @@ from app.collectors.vps_ssh import VpsSSHCollector
 from app.models.instance import Instance
 from app.models.metrics import HealthMetric, GatewayMetric
 from app.models.vps_metrics import VpsMetric, ServiceStatus, ServiceLog
+from app.models.reports import ReportConfig
 from app.alerts import engine as alert_engine
+from app.utils.crypto import decrypt_secret
+from app.services.report_generator import generate_report, purge_old_reports
+from app.services.report_sender import dispatch_report
 
 from sqlalchemy import select
 
@@ -96,6 +102,28 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(),
     )
 
+    # Job 7: Relatórios — turno da manhã (REPORT_CRON_MORNING:00 BRT)
+    scheduler.add_job(
+        job_generate_reports,
+        "cron",
+        hour=settings.report_cron_morning,
+        minute=0,
+        timezone=settings.scheduler_timezone,
+        id="generate_reports_am",
+        name=f"Relatórios Manhã ({settings.report_cron_morning:02d}:00 BRT)",
+    )
+
+    # Job 8: Relatórios — turno da tarde (REPORT_CRON_EVENING:00 BRT)
+    scheduler.add_job(
+        job_generate_reports,
+        "cron",
+        hour=settings.report_cron_evening,
+        minute=0,
+        timezone=settings.scheduler_timezone,
+        id="generate_reports_pm",
+        name=f"Relatórios Tarde ({settings.report_cron_evening:02d}:00 BRT)",
+    )
+
     return scheduler
 
 
@@ -106,12 +134,8 @@ async def _get_active_instances(db: AsyncSession) -> list[Instance]:
 
 
 async def _decrypt_password(encrypted: str) -> str:
-    """
-    Decripta senha armazenada no banco.
-    Implementação simplificada — em produção use Fernet com SECRET_KEY.
-    """
-    # TODO: implementar criptografia Fernet com settings.secret_key
-    return encrypted
+    """Decripta senha armazenada no banco via Fernet (SECRET_KEY)."""
+    return decrypt_secret(encrypted)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -306,6 +330,62 @@ async def job_collect_vps_ssh():
                 logger.error("Erro ao coletar VPS SSH para %s: %s", instance.name, e)
 
         await db.commit()
+
+
+async def job_generate_reports():
+    """
+    Gera e envia relatórios para todas as ReportConfigs ativas.
+    Executa nos horários definidos por REPORT_CRON_MORNING e REPORT_CRON_EVENING.
+    Cada config é processada de forma independente — falha em uma não afeta as demais.
+    Ao final, purga arquivos mais antigos que REPORT_RETENTION_DAYS.
+    """
+    logger.info("Job: generate_reports iniciado")
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(ReportConfig).where(ReportConfig.active == True)
+        )
+        configs = result.scalars().all()
+
+        if not configs:
+            logger.info("Nenhuma ReportConfig ativa encontrada.")
+            return
+
+        logger.info("Gerando relatórios para %d config(s) ativa(s).", len(configs))
+
+        for config in configs:
+            try:
+                history = await generate_report(db=db, config=config, trigger="scheduled")
+
+                if history.status == "success":
+                    email_sent, sms_sent = await dispatch_report(config, history)
+                    history.sent_email = email_sent
+                    history.sent_sms = sms_sent
+                    await db.commit()
+                    logger.info(
+                        "Relatório OK: %s | email=%s sms=%s",
+                        config.company_name,
+                        email_sent,
+                        sms_sent,
+                    )
+                else:
+                    logger.warning(
+                        "Relatório com erro: %s — %s",
+                        config.company_name,
+                        history.error_message,
+                    )
+
+            except Exception as e:
+                logger.exception(
+                    "Erro inesperado ao processar config %s: %s", config.id, e
+                )
+
+        # Limpeza de arquivos antigos (roda uma vez por job, não por config)
+        try:
+            removed = await purge_old_reports(db)
+            if removed:
+                logger.info("Purga: %d arquivo(s) antigo(s) removido(s).", removed)
+        except Exception as e:
+            logger.warning("Erro na purga de relatórios antigos: %s", e)
 
 
 async def job_run_alert_engine():

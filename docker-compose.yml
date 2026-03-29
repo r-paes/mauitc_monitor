@@ -33,6 +33,7 @@ services:
     volumes:
       - ./backend:/app
       - ssh_keys:/app/ssh_keys:ro
+      - reports_data:/app/reports
     ports:
       - "8000:8000"
     depends_on:
@@ -68,3 +69,4 @@ services:
 volumes:
   db_data:
   ssh_keys:
+  reports_data:

@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models.instance import Instance, Company
 from app.routers.auth import get_current_user
 from app.models.users import User
+from app.utils.crypto import encrypt_secret
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -81,12 +82,12 @@ async def create_instance(
         name=data.name,
         url=data.url,
         api_user=data.api_user,
-        api_password_enc=data.api_password,  # TODO: encriptar com Fernet
+        api_password_enc=encrypt_secret(data.api_password),
         db_host=data.db_host,
         db_port=data.db_port,
         db_name=data.db_name,
         db_user=data.db_user,
-        db_password_enc=data.db_password,
+        db_password_enc=encrypt_secret(data.db_password) if data.db_password else None,
         ssh_host=data.ssh_host,
         ssh_port=data.ssh_port,
         ssh_user=data.ssh_user,
@@ -128,7 +129,7 @@ async def update_instance(
 
     for field, value in data.model_dump(exclude_none=True).items():
         if field == "api_password":
-            setattr(instance, "api_password_enc", value)
+            setattr(instance, "api_password_enc", encrypt_secret(value))
         else:
             setattr(instance, field, value)
 

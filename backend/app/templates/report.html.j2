@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório Mautic — {{ company_name }}</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      color: #1a2332;
+      background: #f5f7fa;
+      padding: 0;
+    }
+
+    /* ── Layout ── */
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      background: #ffffff;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: #0d1e31;
+      padding: 28px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-logo {
+      height: 36px;
+      width: auto;
+    }
+    .header-title {
+      color: #F5EEE4;
+      font-size: 13px;
+      text-align: right;
+      line-height: 1.5;
+    }
+    .header-title strong {
+      display: block;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    /* ── Banner empresa ── */
+    .company-banner {
+      background: linear-gradient(135deg, #1a4a7a 0%, #0d2d52 100%);
+      padding: 24px 40px;
+      color: #ffffff;
+    }
+    .company-banner h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .company-banner .period {
+      font-size: 13px;
+      color: #b0c4de;
+    }
+
+    /* ── Seção ── */
+    .section {
+      padding: 28px 40px;
+      border-bottom: 1px solid #e8ecf0;
+    }
+    .section:last-of-type {
+      border-bottom: none;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b7a8d;
+      margin-bottom: 16px;
+    }
+
+    /* ── Cards de métricas ── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .metric-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+    .metric-card .metric-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #0d1e31;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .metric-card .metric-label {
+      font-size: 11px;
+      color: #6b7a8d;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .metric-card.highlight {
+      background: #0d1e31;
+      border-color: #0d1e31;
+    }
+    .metric-card.highlight .metric-value { color: #F5EEE4; }
+    .metric-card.highlight .metric-label { color: #7a9bbf; }
+    .metric-card.success { border-left: 3px solid #22c55e; }
+    .metric-card.warning { border-left: 3px solid #f59e0b; }
+    .metric-card.info    { border-left: 3px solid #3b82f6; }
+
+    /* ── Taxa calculada ── */
+    .rate-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f3f6;
+    }
+    .rate-row:last-child { border-bottom: none; }
+    .rate-row .rate-label { color: #4a5568; font-size: 13px; }
+    .rate-row .rate-value { font-weight: 700; color: #1a2332; }
+    .rate-row .rate-bar {
+      width: 120px;
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 0 12px;
+    }
+    .rate-row .rate-bar-fill {
+      height: 100%;
+      background: #3b82f6;
+      border-radius: 3px;
+    }
+    .rate-row .rate-bar-fill.green  { background: #22c55e; }
+    .rate-row .rate-bar-fill.orange { background: #f59e0b; }
+
+    /* ── Footer ── */
+    .footer {
+      background: #0d1e31;
+      padding: 16px 40px;
+      text-align: center;
+      color: #7a9bbf;
+      font-size: 11px;
+    }
+    .footer a { color: #b0c4de; text-decoration: none; }
+
+    /* ── Utilidades ── */
+    .text-muted  { color: #6b7a8d; }
+    .text-small  { font-size: 11px; }
+    .mt-8  { margin-top: 8px; }
+    .mt-16 { margin-top: 16px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <img class="header-logo" src="{{ logo_url }}" alt="Space CRM">
+    <div class="header-title">
+      <strong>Relatório de Envios</strong>
+      Gerado em {{ generated_at }}
+    </div>
+  </div>
+
+  <!-- Banner Empresa -->
+  <div class="company-banner">
+    <h1>{{ company_name }}</h1>
+    <div class="period">
+      Período: {{ period_start }} até {{ period_end }}
+    </div>
+  </div>
+
+  <!-- ── Email ── -->
+  <div class="section">
+    <div class="section-title">E-mail Marketing</div>
+    <div class="metrics-grid">
+      <div class="metric-card highlight">
+        <div class="metric-value">{{ email.total_sent | default(0) }}</div>
+        <div class="metric-label">Enviados</div>
+      </div>
+      <div class="metric-card info">
+        <div class="metric-value">{{ email.total_opened | default(0) }}</div>
+        <div class="metric-label">Abertos</div>
+      </div>
+      <div class="metric-card success">
+        <div class="metric-value">{{ email.total_clicked | default(0) }}</div>
+        <div class="metric-label">Cliques</div>
+      </div>
+      <div class="metric-card warning">
+        <div class="metric-value">{{ email.total_failed | default(0) }}</div>
+        <div class="metric-label">Falhas</div>
+      </div>
+    </div>
+
+    {% if email.total_sent > 0 %}
+    <div class="mt-16">
+      {% set open_rate  = ((email.total_opened  / email.total_sent) * 100) | round(1) %}
+      {% set click_rate = ((email.total_clicked / email.total_sent) * 100) | round(1) %}
+      {% set fail_rate  = ((email.total_failed  / email.total_sent) * 100) | round(1) %}
+
+      <div class="rate-row">
+        <span class="rate-label">Taxa de Abertura</span>
+        <div class="rate-bar"><div class="rate-bar-fill green" style="width: {{ [open_rate, 100] | min }}%"></div></div>
+        <span class="rate-value">{{ open_rate }}%</span>
+      </div>
+      <div class="rate-row">
+        <span class="rate-label">Taxa de Clique</span>
+        <div class="rate-bar"><div class="rate-bar-fill" style="width: {{ [click_rate, 100] | min }}%"></div></div>
+        <span class="rate-value">{{ click_rate }}%</span>
+      </div>
+      <div class="rate-row">
+        <span class="rate-label">Taxa de Falha</span>
+        <div class="rate-bar"><div class="rate-bar-fill orange" style="width: {{ [fail_rate, 100] | min }}%"></div></div>
+        <span class="rate-value">{{ fail_rate }}%</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if email.queued is defined and email.queued > 0 %}
+    <div class="mt-8 text-muted text-small">
+      {{ email.queued }} e-mails na fila aguardando envio.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── SMS ── -->
+  {% if sms.total_sent > 0 or show_sms %}
+  <div class="section">
+    <div class="section-title">SMS</div>
+    <div class="metrics-grid">
+      <div class="metric-card highlight">
+        <div class="metric-value">{{ sms.total_sent | default(0) }}</div>
+        <div class="metric-label">Enviados</div>
+      </div>
+      {% if sms.total_failed is defined %}
+      <div class="metric-card warning">
+        <div class="metric-value">{{ sms.total_failed | default(0) }}</div>
+        <div class="metric-label">Falhas</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Contatos ── -->
+  <div class="section">
+    <div class="section-title">Contatos</div>
+    <div class="metrics-grid">
+      <div class="metric-card success">
+        <div class="metric-value">{{ contacts.new_contacts | default(0) }}</div>
+        <div class="metric-label">Novos no período</div>
+      </div>
+      <div class="metric-card info">
+        <div class="metric-value">{{ contacts.active_contacts | default(0) }}</div>
+        <div class="metric-label">Total ativos</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Space CRM &mdash; Relatório gerado automaticamente.
+    Para suporte: <a href="mailto:{{ support_email | default('suporte@spacecrm.com.br') }}">{{ support_email | default('suporte@spacecrm.com.br') }}</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   DESIGN TOKENS — Space Monitor
+   Espelha as variáveis do preview/index.html.
+   Todos os valores de cor, tipografia e espaçamento devem
+   ser referenciados a partir daqui ou do tailwind.config.ts.
+   ============================================================ */
+
+:root {
+  /* ── Cores — Identidade ──────────────────────────────────── */
+  --color-primary:        #2F75B9;
+  --color-primary-hover:  #3d87cc;
+  --color-accent:         #37BC75;
+  --color-accent-dark:    #2da864;
+
+  /* ── Cores — Light mode (conteúdo) ──────────────────────── */
+  --color-bg:             #FFFFFF;
+  --color-surface:        #FFFFFF;
+  --color-surface-2:      #f5f5f5;
+
+  /* ── Sidebar & Topnav — sempre escuros ──────────────────── */
+  --color-sidebar-bg:     #0d1e31;
+  --color-topnav-bg:      #0f2035;
+  --color-sidebar-text:   #F5EEE4;
+  --color-sidebar-muted:  #8fa5bd;
+  --color-nav-active:     #1a3255;
+  --color-nav-border:     #1e3350;
+
+  /* ── Cores — Texto ──────────────────────────────────────── */
+  --color-text:           #091628;
+  --color-text-muted:     #5a6a7e;
+  --color-border:         #ddd6cb;
+
+  /* ── Status ─────────────────────────────────────────────── */
+  --color-ok:             #37BC75;
+  --color-warning:        #f59e0b;
+  --color-critical:       #ef4444;
+  --color-info:           #2F75B9;
+
+  /* ── Tipografia ─────────────────────────────────────────── */
+  --font-sans:            'Inter', system-ui, -apple-system, sans-serif;
+  --text-xs:              0.75rem;    /* 12px */
+  --text-sm:              0.875rem;   /* 14px */
+  --text-base:            1rem;       /* 16px */
+  --text-lg:              1.125rem;   /* 18px */
+  --text-xl:              1.25rem;    /* 20px */
+  --text-2xl:             1.5rem;     /* 24px */
+
+  /* ── Espaçamento ─────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  --sidebar-width:        240px;
+  --topnav-height:        56px;
+  --content-max-width:    1400px;
+
+  /* ── Border radius ──────────────────────────────────────── */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-full: 9999px;
+
+  /* ── Sombras ─────────────────────────────────────────────── */
+  --shadow-sm:  0 1px 3px rgba(9, 22, 40, 0.08);
+  --shadow-md:  0 4px 12px rgba(9, 22, 40, 0.10);
+  --shadow-lg:  0 8px 24px rgba(9, 22, 40, 0.14);
+
+  /* ── Transições ─────────────────────────────────────────── */
+  --transition: 0.2s ease;
+}
+
+/* ── Dark mode — somente conteúdo principal ──────────────── */
+[data-theme="dark"] {
+  --color-bg:         #091628;
+  --color-surface:    #0f2035;
+  --color-surface-2:  #152840;
+  --color-text:       #F5EEE4;
+  --color-text-muted: #8fa5bd;
+  --color-border:     #1e3350;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);
+}
+
+/* ============================================================
+   BASE RESET
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  transition: background var(--transition), color var(--transition);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   SCROLLBAR CUSTOMIZADA
+   ============================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+/* ============================================================
+   UTILITÁRIOS GLOBAIS
+   ============================================================ */
+
+/* Ocultar visualmente mas manter acessível para leitores de tela */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Truncar texto em uma linha */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Focus ring acessível */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   RESPONSIVIDADE — Breakpoints (Tailwind padrão)
+   sm:  640px  — mobile grande / landscape
+   md:  768px  — tablet
+   lg: 1024px  — desktop pequeno
+   xl: 1280px  — desktop
+   2xl:1536px  — desktop grande
+   ============================================================ */

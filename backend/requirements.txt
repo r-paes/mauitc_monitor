@@ -38,3 +38,8 @@ structlog==24.1.0
 # Utilities
 tenacity==8.3.0
 python-dateutil==2.9.0
+
+# Módulo de Relatórios Mautic
+aiomysql==0.2.0          # driver MySQL async (bancos das instâncias Mautic)
+openpyxl==3.1.2          # geração de planilhas Excel
+jinja2==3.1.4            # templates HTML dos relatórios

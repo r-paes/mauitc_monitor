@@ -123,10 +123,21 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
 
     # -------------------------------------------------------------------------
+    # 📊 Módulo de Relatórios Mautic
+    # Credenciais MySQL por instância são armazenadas no banco de dados.
+    # -------------------------------------------------------------------------
+    report_storage_path: str = "/app/reports"
+    report_retention_days: int = 30
+    report_cron_morning: int = 9    # hora BRT (0-23)
+    report_cron_evening: int = 18   # hora BRT (0-23)
+    mautic_mysql_connect_timeout: int = 10
+    mautic_mysql_pool_size: int = 5
+
+    # -------------------------------------------------------------------------
     # 🐳 Docker / EasyPanel
     # -------------------------------------------------------------------------
     compose_project_name: str = "mautic-monitor"
-    easypanel_domain: str = "monitor.spacecrm.online"
+    easypanel_domain: str = "your-domain.com"
     tz: str = "America/Sao_Paulo"
 
     # -------------------------------------------------------------------------
