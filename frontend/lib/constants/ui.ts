@@ -103,11 +103,16 @@ export const PAGE_TABS = {
     { key: "history",  label: "Histórico" },
     { key: "rules",    label: "Regras" },
   ],
+  reports: [
+    { key: "recentes",      label: "Recentes" },
+    { key: "agendamentos",  label: "Agendamentos" },
+  ],
 } as const;
 
 /** Rótulos de seções da sidebar */
 export const NAV_LABELS = {
   monitoring: "Monitoramento",
+  alerts_section: "Alertas e Notificações",
   reports_section: "Relatórios",
   system: "Sistema",
   dashboard: "Dashboard",
@@ -115,7 +120,9 @@ export const NAV_LABELS = {
   gateways: "Gateways",
   vps: "VPS & Logs",
   alerts: "Alertas",
-  reports: "Relatórios",
+  notifications: "Notificações",
+  reports_recentes: "Recentes",
+  reports_agendamentos: "Agendamentos",
   users: "Usuários",
   settings: "Configurações",
   logout: "Sair",

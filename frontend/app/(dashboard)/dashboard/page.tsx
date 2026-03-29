@@ -49,7 +49,7 @@ export default function DashboardPage() {
     <div className="flex items-center gap-2">
       <DateRangePicker value={dateRange} onChange={setDateRange} />
       <Button
-        variant="secondary"
+        variant="primary"
         size="md"
         icon={<RefreshCw size={14} />}
         onClick={handleRefresh}

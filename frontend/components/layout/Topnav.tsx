@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Sun, Moon, Menu } from "lucide-react";
+import { Sun, Moon, Menu } from "lucide-react";
 import { useTheme } from "@/components/layout/Providers";
 import { useSidebar } from "@/lib/hooks/useSidebar";
 
@@ -27,10 +27,7 @@ export function Topnav({ title, subtitle, tabs, actions }: TopnavProps) {
         height: "var(--topnav-height)",
       }}
     >
-      <div
-        className="flex items-center h-full gap-3 px-4 md:px-6"
-        style={{ marginLeft: "var(--sidebar-width)" }}
-      >
+      <div className="sidebar-offset flex items-center h-full gap-3 px-4 md:px-6">
         {/* Hamburger — só mobile */}
         <button
           onClick={toggleSidebar}
@@ -67,21 +64,16 @@ export function Topnav({ title, subtitle, tabs, actions }: TopnavProps) {
           <div className="flex items-center gap-2 shrink-0">{actions}</div>
         )}
 
-        {/* Notificações */}
-        <button
-          className="shrink-0 p-1.5 rounded-md text-[var(--color-sidebar-muted)] hover:text-[var(--color-sidebar-text)] transition-colors"
-          aria-label="Notificações"
-        >
-          <Bell size={18} strokeWidth={1.75} />
-        </button>
-
         {/* Toggle tema */}
         <button
           onClick={toggle}
-          className="shrink-0 p-1.5 rounded-md text-[var(--color-sidebar-muted)] hover:text-[var(--color-sidebar-text)] transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-[var(--color-sidebar-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-[var(--color-nav-active)] transition-colors text-xs font-medium"
           aria-label="Alternar tema"
         >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          <span className="hidden sm:inline">
+            {theme === "dark" ? "Light" : "Dark"}
+          </span>
         </button>
       </div>
     </header>

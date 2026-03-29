@@ -163,3 +163,13 @@ body {
    xl: 1280px  — desktop
    2xl:1536px  — desktop grande
    ============================================================ */
+
+/* Offset responsivo da sidebar: 0 no mobile, var(--sidebar-width) no desktop */
+.sidebar-offset {
+  margin-left: 0;
+}
+@media (min-width: 768px) {
+  .sidebar-offset {
+    margin-left: var(--sidebar-width);
+  }
+}

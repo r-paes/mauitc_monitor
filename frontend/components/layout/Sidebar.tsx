@@ -9,7 +9,9 @@ import {
   Radio,
   Monitor,
   Bell,
+  BellRing,
   FileText,
+  CalendarClock,
   Users,
   Settings,
   LogOut,
@@ -25,11 +27,16 @@ const NAV_MONITORING = [
   { href: "/instances",  label: NAV_LABELS.instances,  Icon: Server },
   { href: "/gateways",   label: NAV_LABELS.gateways,   Icon: Radio },
   { href: "/vps",        label: NAV_LABELS.vps,        Icon: Monitor },
-  { href: "/alerts",     label: NAV_LABELS.alerts,     Icon: Bell },
+];
+
+const NAV_ALERTS = [
+  { href: "/alerts",         label: NAV_LABELS.alerts,         Icon: Bell },
+  { href: "/notifications",  label: NAV_LABELS.notifications,  Icon: BellRing },
 ];
 
 const NAV_REPORTS = [
-  { href: "/reports", label: NAV_LABELS.reports, Icon: FileText },
+  { href: "/reports",                label: NAV_LABELS.reports_recentes,     Icon: FileText },
+  { href: "/reports/agendamentos",   label: NAV_LABELS.reports_agendamentos, Icon: CalendarClock },
 ];
 
 const NAV_SYSTEM = [
@@ -68,6 +75,14 @@ function NavItem({
   );
 }
 
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <p className="px-3 mb-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--color-sidebar-muted)]">
+      {label}
+    </p>
+  );
+}
+
 export function Sidebar() {
   const { user, logout } = useAuth();
   const { open, close } = useSidebar();
@@ -90,9 +105,7 @@ export function Sidebar() {
       <aside
         className={clsx(
           "fixed inset-y-0 left-0 z-40 flex flex-col transition-transform duration-300",
-          // Mobile: esconde fora da tela, mostra quando open
           open ? "translate-x-0" : "-translate-x-full",
-          // Desktop: sempre visível
           "md:translate-x-0"
         )}
         style={{
@@ -117,18 +130,26 @@ export function Sidebar() {
         </div>
 
         {/* Nav principal */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-          <p className="px-3 mb-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--color-sidebar-muted)]">
-            {NAV_LABELS.monitoring}
-          </p>
-          {NAV_MONITORING.map(({ href, label, Icon }) => (
-            <NavItem key={href} href={href} label={label} Icon={Icon} onClick={close} />
-          ))}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+          {/* MONITORAMENTO */}
+          <div className="space-y-0.5">
+            <SectionLabel label={NAV_LABELS.monitoring} />
+            {NAV_MONITORING.map(({ href, label, Icon }) => (
+              <NavItem key={href} href={href} label={label} Icon={Icon} onClick={close} />
+            ))}
+          </div>
 
-          <div className="pt-4 pb-1">
-            <p className="px-3 mb-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--color-sidebar-muted)]">
-              {NAV_LABELS.reports_section}
-            </p>
+          {/* ALERTAS E NOTIFICAÇÕES */}
+          <div className="space-y-0.5">
+            <SectionLabel label={NAV_LABELS.alerts_section} />
+            {NAV_ALERTS.map(({ href, label, Icon }) => (
+              <NavItem key={href} href={href} label={label} Icon={Icon} onClick={close} />
+            ))}
+          </div>
+
+          {/* RELATÓRIOS */}
+          <div className="space-y-0.5">
+            <SectionLabel label={NAV_LABELS.reports_section} />
             {NAV_REPORTS.map(({ href, label, Icon }) => (
               <NavItem key={href} href={href} label={label} Icon={Icon} onClick={close} />
             ))}
@@ -137,9 +158,7 @@ export function Sidebar() {
 
         {/* Nav sistema */}
         <div className="px-3 pb-2 border-t border-[var(--color-nav-border)] pt-3 space-y-0.5">
-          <p className="px-3 mb-2 text-[10px] font-semibold tracking-widest uppercase text-[var(--color-sidebar-muted)]">
-            {NAV_LABELS.system}
-          </p>
+          <SectionLabel label={NAV_LABELS.system} />
           {NAV_SYSTEM.map(({ href, label, Icon }) => (
             <NavItem key={href} href={href} label={label} Icon={Icon} onClick={close} />
           ))}
