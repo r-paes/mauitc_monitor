@@ -61,11 +61,10 @@ export function SendpostCards({ params }: SendpostCardsProps) {
   const t = data.totals;
   const processed = t.emails_sent ?? 0;
   const delivered = t.emails_delivered ?? 0;
-  const bounce = (t.emails_hard_bounced ?? 0) + (t.emails_soft_bounced ?? 0);
 
   return (
     <div className="space-y-6">
-      {/* Cards — 7 métricas com percentuais */}
+      {/* Cards — 8 métricas com percentuais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Processed"
@@ -87,11 +86,18 @@ export function SendpostCards({ params }: SendpostCardsProps) {
           icon={<Ban size={18} />}
         />
         <StatCard
-          label="Bounce"
-          value={fmt(bounce)}
-          delta={pct(bounce, delivered) ?? undefined}
-          deltaOk={bounce === 0}
+          label="Hard Bounce"
+          value={fmt(t.emails_hard_bounced)}
+          delta={pct(t.emails_hard_bounced, delivered) ?? undefined}
+          deltaOk={(t.emails_hard_bounced ?? 0) === 0}
           icon={<XCircle size={18} />}
+        />
+        <StatCard
+          label="Soft Bounce"
+          value={fmt(t.emails_soft_bounced)}
+          delta={pct(t.emails_soft_bounced, delivered) ?? undefined}
+          deltaOk={(t.emails_soft_bounced ?? 0) === 0}
+          icon={<AlertTriangle size={18} />}
         />
         <StatCard
           label="Opened"
