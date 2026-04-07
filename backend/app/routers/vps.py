@@ -20,9 +20,9 @@ router = APIRouter(prefix="/vps", tags=["vps"])
 
 
 class VpsMetricOut(BaseModel):
-    id: str
+    id: uuid.UUID
     time: datetime
-    instance_id: str
+    instance_id: uuid.UUID
     cpu_percent: Optional[float]
     memory_percent: Optional[float]
     memory_used_mb: Optional[int]
@@ -34,34 +34,31 @@ class VpsMetricOut(BaseModel):
     load_avg_5m: Optional[float]
     load_avg_15m: Optional[float]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class ServiceStatusOut(BaseModel):
-    id: str
+    id: uuid.UUID
     time: datetime
-    instance_id: str
+    instance_id: uuid.UUID
     container_name: str
     status: str
     restart_count: Optional[int]
     image: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class ServiceLogOut(BaseModel):
-    id: str
-    instance_id: str
+    id: uuid.UUID
+    instance_id: uuid.UUID
     container_name: str
     log_level: str
     message: str
     pattern_matched: Optional[str]
     captured_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 @router.get("/metrics", response_model=list[VpsMetricOut])

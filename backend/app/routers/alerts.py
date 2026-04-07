@@ -20,18 +20,17 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
 class AlertOut(BaseModel):
-    id: str
-    instance_id: Optional[str]
+    id: uuid.UUID
+    instance_id: Optional[uuid.UUID]
     severity: str
     type: str
     message: str
     notified_via: Optional[str]
     created_at: datetime
     resolved_at: Optional[datetime]
-    acked_by: Optional[str]
+    acked_by: Optional[uuid.UUID]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 @router.get("/", response_model=list[AlertOut])

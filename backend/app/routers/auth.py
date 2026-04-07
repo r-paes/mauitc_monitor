@@ -5,6 +5,7 @@ Refresh token armazenado em cookie HTTP-only (não acessível via JavaScript).
 Access token retornado no body JSON (armazenado em memória no frontend).
 """
 
+import uuid as uuid_mod
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
@@ -36,13 +37,12 @@ class TokenOut(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: str
+    id: uuid_mod.UUID
     name: str
     email: str
     role: str
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────

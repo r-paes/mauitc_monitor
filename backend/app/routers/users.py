@@ -27,7 +27,7 @@ class UserCreate(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: str
+    id: uuid.UUID
     name: str
     email: str
     alert_email: Optional[str]
@@ -35,8 +35,7 @@ class UserOut(BaseModel):
     role: str
     active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class UserUpdate(BaseModel):

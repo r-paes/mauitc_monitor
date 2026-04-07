@@ -20,9 +20,9 @@ router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
 class HealthMetricOut(BaseModel):
-    id: str
+    id: uuid.UUID
     time: datetime
-    instance_id: str
+    instance_id: uuid.UUID
     new_contacts: Optional[int]
     active_campaigns: Optional[int]
     emails_queued: Optional[int]
@@ -32,12 +32,11 @@ class HealthMetricOut(BaseModel):
     db_response_ms: Optional[int]
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class GatewayMetricOut(BaseModel):
-    id: str
+    id: uuid.UUID
     time: datetime
     gateway_type: str
     emails_sent: Optional[int]
@@ -49,8 +48,7 @@ class GatewayMetricOut(BaseModel):
     sms_failed: Optional[int]
     balance_credits: Optional[float]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 @router.get("/health", response_model=list[HealthMetricOut])
