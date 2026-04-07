@@ -30,10 +30,15 @@ router = APIRouter(prefix="/gateways", tags=["gateways"])
 # label: exibido no frontend  |  sensitive: mascara o valor na resposta GET
 
 GATEWAY_KEYS: dict[str, dict] = {
-    # Sendpost — apenas Account API Key (acesso a todas as sub-accounts)
+    # Sendpost
     "sendpost_api_key": {
         "gateway": "sendpost",
-        "label": "Account API Key",
+        "label": "Account API Key (coleta de stats)",
+        "sensitive": True,
+    },
+    "sendpost_subaccount_api_key": {
+        "gateway": "sendpost",
+        "label": "SubAccount API Key (envio de alertas)",
         "sensitive": True,
     },
     # Avant SMS
