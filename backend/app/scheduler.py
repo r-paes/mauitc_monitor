@@ -188,16 +188,22 @@ async def job_collect_gateways():
     async with AsyncSessionLocal() as db:
         now = datetime.now(timezone.utc)
 
-        # Sendpost
+        # Sendpost — coleta por sub-account
         try:
             sendpost_key = await get_gateway_setting(db, "sendpost_api_key", settings.sendpost_api_key)
-            sendpost_from = await get_gateway_setting(db, "sendpost_alert_from_email", settings.sendpost_alert_from_email)
-            sendpost = SendpostCollector(api_key=sendpost_key, from_email=sendpost_from)
-            data = await sendpost.collect()
-            metric = GatewayMetric(time=now, gateway_type="sendpost", **data)
-            db.add(metric)
-
-            await alert_engine.check_low_balance(db, data.get("balance_credits"), "Sendpost")
+            sendpost = SendpostCollector(account_api_key=sendpost_key)
+            results = await sendpost.collect()
+            for data in results:
+                sub_id = data.pop("subaccount_id", None)
+                sub_name = data.pop("subaccount_name", None)
+                metric = GatewayMetric(
+                    time=now,
+                    gateway_type="sendpost",
+                    subaccount_id=sub_id,
+                    subaccount_name=sub_name,
+                    **data,
+                )
+                db.add(metric)
         except Exception as e:
             logger.error("Erro ao coletar Sendpost: %s", e)
 
@@ -367,7 +373,7 @@ async def job_generate_reports():
 
                 if history.status == "success":
                     # Credenciais do banco com fallback para .env
-                    sp_key = await get_gateway_setting(db, "sendpost_api_key", settings.sendpost_api_key)
+                    sp_key = await get_gateway_setting(db, "sendpost_subaccount_api_key", settings.sendpost_api_key)
                     sp_from = await get_gateway_setting(db, "sendpost_alert_from_email", settings.sendpost_alert_from_email)
                     av_token = await get_gateway_setting(db, "avant_sms_token", settings.avant_sms_token)
                     email_sent, sms_sent = await dispatch_report(

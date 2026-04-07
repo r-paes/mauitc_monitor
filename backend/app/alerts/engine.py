@@ -109,8 +109,8 @@ async def _create_alert(
 
 async def _notify_users_email(db: AsyncSession, severity: str, alert_type: str, message: str):
     """Envia email para todos os usuários ativos com alert_email configurado."""
-    # Credenciais do banco (prioridade) com fallback para .env
-    api_key = await get_gateway_setting(db, "sendpost_api_key", settings.sendpost_api_key)
+    # Envio usa SubAccount API Key — busca do banco ou fallback .env
+    api_key = await get_gateway_setting(db, "sendpost_subaccount_api_key", settings.sendpost_api_key)
     from_email = await get_gateway_setting(db, "sendpost_alert_from_email", settings.sendpost_alert_from_email)
 
     result = await db.execute(

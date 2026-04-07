@@ -16,15 +16,27 @@ export interface HealthMetric {
 export interface GatewayMetric {
   time: string;
   gateway_type: string;
+  // Sub-account (Sendpost)
+  subaccount_id: number | null;
+  subaccount_name: string | null;
+  // Email (Sendpost)
   emails_sent: number | null;
   emails_delivered: number | null;
-  emails_bounced: number | null;
+  emails_dropped: number | null;
+  emails_hard_bounced: number | null;
+  emails_soft_bounced: number | null;
+  emails_opened: number | null;
+  emails_clicked: number | null;
+  emails_unsubscribed: number | null;
   emails_spam: number | null;
+  open_rate: number | null;
+  click_rate: number | null;
+  // SMS (Avant)
   sms_sent: number | null;
   sms_delivered: number | null;
   sms_failed: number | null;
+  // Saldo
   balance_credits: number | null;
-  status: string;
 }
 
 export interface DashboardSummary {

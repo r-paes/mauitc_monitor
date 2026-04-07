@@ -71,14 +71,22 @@ class GatewayMetric(Base):
     # sendpost | avant_sms
     gateway_type: Mapped[str] = mapped_column(String(30), nullable=False)
 
-    # Métricas de email (Sendpost)
-    emails_sent: Mapped[int | None] = mapped_column(Integer)
-    emails_delivered: Mapped[int | None] = mapped_column(Integer)
-    emails_bounced: Mapped[int | None] = mapped_column(Integer)
-    emails_spam: Mapped[int | None] = mapped_column(Integer)
-    emails_unsubscribed: Mapped[int | None] = mapped_column(Integer)
-    open_rate: Mapped[float | None] = mapped_column(Float)
-    click_rate: Mapped[float | None] = mapped_column(Float)
+    # Identificação da sub-account (Sendpost)
+    subaccount_id: Mapped[int | None] = mapped_column(Integer)
+    subaccount_name: Mapped[str | None] = mapped_column(String(100))
+
+    # Métricas de email (Sendpost) — campos 1:1 com a API
+    emails_sent: Mapped[int | None] = mapped_column(Integer)          # processed
+    emails_delivered: Mapped[int | None] = mapped_column(Integer)     # delivered
+    emails_dropped: Mapped[int | None] = mapped_column(Integer)       # dropped
+    emails_hard_bounced: Mapped[int | None] = mapped_column(Integer)  # hardBounced
+    emails_soft_bounced: Mapped[int | None] = mapped_column(Integer)  # softBounced
+    emails_opened: Mapped[int | None] = mapped_column(Integer)        # opened
+    emails_clicked: Mapped[int | None] = mapped_column(Integer)       # clicked
+    emails_unsubscribed: Mapped[int | None] = mapped_column(Integer)  # unsubscribed
+    emails_spam: Mapped[int | None] = mapped_column(Integer)          # spam
+    open_rate: Mapped[float | None] = mapped_column(Float)            # calculado
+    click_rate: Mapped[float | None] = mapped_column(Float)           # calculado
 
     # Métricas de SMS (Avant)
     sms_sent: Mapped[int | None] = mapped_column(Integer)

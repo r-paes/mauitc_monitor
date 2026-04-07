@@ -1,12 +1,11 @@
 """
-sendpost.py — Coleta de estatísticas via Sendpost REST API.
+sendpost.py — Coleta de estatísticas via Sendpost REST API (Account-level).
 
-Nota: O Mautic envia emails via SMTP para o Sendpost.
-      Esta coleta usa a API REST do Sendpost para obter as estatísticas
-      reais de entrega — base para os Delta Alerts.
+Usa a X-Account-ApiKey para:
+  1. Listar todas as sub-accounts da conta
+  2. Coletar stats agregadas de cada sub-account individualmente
 
-Auth: Header X-SubAccount-ApiKey
-Docs: https://docs.sendpost.io/api-reference/introduction
+Docs: https://docs.sendpost.io/api-reference/
 """
 
 import logging
@@ -19,40 +18,61 @@ from app.utils.retry import with_retry
 
 logger = logging.getLogger(__name__)
 
-# Endpoints Sendpost — centralizados aqui, não espalhados no código
-SENDPOST_STATS_ENDPOINT = "/subaccount/stat/aggregate"
-SENDPOST_SUPPRESSION_ENDPOINT = "/subaccount/suppression"
-
 
 class SendpostCollector:
-    """Coleta estatísticas de email via Sendpost REST API."""
+    """Coleta estatísticas de email via Sendpost Account API."""
 
-    def __init__(
-        self,
-        api_key: str | None = None,
-        from_email: str | None = None,
-    ):
-        # Aceita credenciais via parâmetro (do banco) ou fallback para settings
+    def __init__(self, account_api_key: str | None = None):
         self.base_url = settings.sendpost_api_base_url.rstrip("/")
         self.headers = {
-            "X-SubAccount-ApiKey": api_key or settings.sendpost_api_key,
+            "X-Account-ApiKey": account_api_key or settings.sendpost_api_key,
             "Content-Type": "application/json",
         }
-        self.from_email = from_email or settings.sendpost_alert_from_email
         self.timeout = settings.mautic_timeout_seconds
 
     @with_retry(exceptions=(httpx.HTTPError, httpx.TimeoutException))
-    async def get_aggregate_stats(self, hours: int = 1) -> dict | None:
+    async def list_subaccounts(self) -> list[dict]:
         """
-        Coleta estatísticas agregadas do período.
-        Retorna: sent, delivered, bounced, spam, unsubscribed, open_rate, click_rate.
+        Lista todas as sub-accounts da conta Sendpost.
+        GET /account/subaccount/
+        Retorna: [{"id": 123, "name": "Sub1", ...}, ...]
+        """
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                headers=self.headers,
+                timeout=self.timeout,
+            ) as client:
+                resp = await client.get("/account/subaccount/", params={"limit": 100, "offset": 0})
+                resp.raise_for_status()
+                data = resp.json()
+                # A API pode retornar lista direta ou wrapper
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict) and "data" in data:
+                    return data["data"]
+                return data if isinstance(data, list) else []
+        except httpx.HTTPStatusError as e:
+            logger.error("Sendpost list_subaccounts erro %s: %s", e.response.status_code, e.response.text)
+            return []
+        except Exception as e:
+            logger.error("Erro ao listar sub-accounts Sendpost: %s", e)
+            return []
+
+    @with_retry(exceptions=(httpx.HTTPError, httpx.TimeoutException))
+    async def get_subaccount_stats(self, subaccount_id: int, hours: int = 1) -> dict | None:
+        """
+        Coleta stats agregadas de uma sub-account específica.
+        GET /account/subaccount/stat/{subaccount_id}/aggregate
+        Retorna: {processed, delivered, dropped, hardBounced, softBounced,
+                  opened, clicked, unsubscribed, spam}
         """
         now = datetime.now(timezone.utc)
         from_dt = now - timedelta(hours=hours)
 
         params = {
-            "from": from_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "to": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "from": from_dt.strftime("%Y-%m-%d"),
+            "to": now.strftime("%Y-%m-%d"),
         }
 
         try:
@@ -61,40 +81,121 @@ class SendpostCollector:
                 headers=self.headers,
                 timeout=self.timeout,
             ) as client:
-                resp = await client.get(SENDPOST_STATS_ENDPOINT, params=params)
+                resp = await client.get(
+                    f"/account/subaccount/stat/{subaccount_id}/aggregate",
+                    params=params,
+                )
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error("Sendpost API erro %s: %s", e.response.status_code, e.response.text)
+            logger.error(
+                "Sendpost stats subaccount %s erro %s: %s",
+                subaccount_id, e.response.status_code, e.response.text,
+            )
             return None
         except Exception as e:
-            logger.error("Erro ao coletar stats Sendpost: %s", e)
+            logger.error("Erro ao coletar stats Sendpost subaccount %s: %s", subaccount_id, e)
             return None
 
-    async def collect(self) -> dict:
-        """Retorna snapshot consolidado de métricas de email."""
-        raw = await self.get_aggregate_stats(hours=1)
+    async def get_account_stats(self, hours: int = 1) -> dict | None:
+        """
+        Coleta stats agregadas de toda a conta (fallback se não há sub-accounts).
+        GET /account/stat/aggregate
+        """
+        now = datetime.now(timezone.utc)
+        from_dt = now - timedelta(hours=hours)
 
-        if raw is None:
-            return {
-                "emails_sent": None,
-                "emails_delivered": None,
-                "emails_bounced": None,
-                "emails_spam": None,
-                "emails_unsubscribed": None,
-                "open_rate": None,
-                "click_rate": None,
-            }
-
-        # Mapeia campos da resposta Sendpost para nosso modelo
-        # Os nomes de campo podem variar conforme a versão da API —
-        # ajuste aqui se necessário sem alterar o restante do código.
-        return {
-            "emails_sent": raw.get("sent") or raw.get("totalSent") or 0,
-            "emails_delivered": raw.get("delivered") or raw.get("totalDelivered") or 0,
-            "emails_bounced": raw.get("bounced") or raw.get("totalBounced") or 0,
-            "emails_spam": raw.get("spam") or raw.get("totalSpam") or 0,
-            "emails_unsubscribed": raw.get("unsubscribed") or raw.get("totalUnsubscribed") or 0,
-            "open_rate": raw.get("openRate") or raw.get("open_rate"),
-            "click_rate": raw.get("clickRate") or raw.get("click_rate"),
+        params = {
+            "from": from_dt.strftime("%Y-%m-%d"),
+            "to": now.strftime("%Y-%m-%d"),
         }
+
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                headers=self.headers,
+                timeout=self.timeout,
+            ) as client:
+                resp = await client.get("/account/stat/aggregate", params=params)
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.error("Sendpost account stats erro %s: %s", e.response.status_code, e.response.text)
+            return None
+        except Exception as e:
+            logger.error("Erro ao coletar stats conta Sendpost: %s", e)
+            return None
+
+    @staticmethod
+    def _parse_stats(raw: dict) -> dict:
+        """Converte resposta da API em dict normalizado para nosso modelo."""
+        delivered = raw.get("delivered", 0) or 0
+        # Account endpoints usam 'opens'/'clicks'/'spams';
+        # SubAccount endpoints usam 'opened'/'clicked'/'spam'
+        opened = raw.get("opened") or raw.get("opens") or 0
+        clicked = raw.get("clicked") or raw.get("clicks") or 0
+        spam = raw.get("spam") or raw.get("spams") or 0
+
+        return {
+            "emails_sent": raw.get("processed", 0) or 0,
+            "emails_delivered": delivered,
+            "emails_dropped": raw.get("dropped", 0) or 0,
+            "emails_hard_bounced": raw.get("hardBounced", 0) or 0,
+            "emails_soft_bounced": raw.get("softBounced", 0) or 0,
+            "emails_opened": opened,
+            "emails_clicked": clicked,
+            "emails_unsubscribed": raw.get("unsubscribed", 0) or 0,
+            "emails_spam": spam,
+            "open_rate": round(opened / delivered * 100, 2) if delivered > 0 else 0.0,
+            "click_rate": round(clicked / delivered * 100, 2) if delivered > 0 else 0.0,
+        }
+
+    @staticmethod
+    def _empty_stats() -> dict:
+        return {
+            "emails_sent": None,
+            "emails_delivered": None,
+            "emails_dropped": None,
+            "emails_hard_bounced": None,
+            "emails_soft_bounced": None,
+            "emails_opened": None,
+            "emails_clicked": None,
+            "emails_unsubscribed": None,
+            "emails_spam": None,
+            "open_rate": None,
+            "click_rate": None,
+        }
+
+    async def collect(self) -> list[dict]:
+        """
+        Coleta stats de todas as sub-accounts.
+        Retorna lista de dicts, cada um com:
+          subaccount_id, subaccount_name, + campos de métricas
+        """
+        subaccounts = await self.list_subaccounts()
+
+        if not subaccounts:
+            # Fallback: coleta stats gerais da conta
+            raw = await self.get_account_stats(hours=1)
+            if raw is None:
+                return [{"subaccount_id": None, "subaccount_name": "Conta", **self._empty_stats()}]
+            return [{"subaccount_id": None, "subaccount_name": "Conta", **self._parse_stats(raw)}]
+
+        results = []
+        for sub in subaccounts:
+            sub_id = sub.get("id")
+            sub_name = sub.get("name", f"Sub-{sub_id}")
+
+            raw = await self.get_subaccount_stats(sub_id, hours=1)
+            if raw is None:
+                stats = self._empty_stats()
+            else:
+                stats = self._parse_stats(raw)
+
+            results.append({
+                "subaccount_id": sub_id,
+                "subaccount_name": sub_name,
+                **stats,
+            })
+
+        return results

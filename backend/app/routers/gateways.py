@@ -1,10 +1,12 @@
 """
 routers/gateways.py — Gerenciamento de credenciais dos gateways de envio.
 
-GET  /gateways/config        — retorna quais chaves estão configuradas (sem valores sensíveis)
-PATCH /gateways/config       — salva/atualiza credenciais (admin only)
+GET   /gateways/config              — retorna quais chaves estão configuradas (sem valores sensíveis)
+PATCH /gateways/config              — salva/atualiza credenciais (admin only)
+POST  /gateways/collect             — força coleta imediata de métricas (admin only)
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -19,6 +21,8 @@ from app.routers.auth import get_current_user
 from app.models.users import User
 from app.utils.crypto import encrypt_secret
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/gateways", tags=["gateways"])
 
 # ─── Chaves gerenciadas ────────────────────────────────────────────────────────
@@ -26,16 +30,11 @@ router = APIRouter(prefix="/gateways", tags=["gateways"])
 # label: exibido no frontend  |  sensitive: mascara o valor na resposta GET
 
 GATEWAY_KEYS: dict[str, dict] = {
-    # Sendpost
+    # Sendpost — apenas Account API Key (acesso a todas as sub-accounts)
     "sendpost_api_key": {
         "gateway": "sendpost",
-        "label": "API Key",
+        "label": "Account API Key",
         "sensitive": True,
-    },
-    "sendpost_alert_from_email": {
-        "gateway": "sendpost",
-        "label": "E-mail remetente",
-        "sensitive": False,
     },
     # Avant SMS
     "avant_sms_token": {
@@ -153,3 +152,71 @@ async def update_gateway_config(
             db.add(GatewayConfig(key=key, value_enc=encrypted, updated_at=now))
 
     await db.commit()
+
+
+# ─── Coleta Manual ───────────────────────────────────────────────────────────
+
+@router.post("/collect")
+async def collect_gateways_now(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Força coleta imediata de métricas dos gateways.
+    Útil para testar credenciais e ver dados na tab Email/SMS.
+    Admin only.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
+
+    from app.collectors.sendpost import SendpostCollector
+    from app.collectors.avant_sms import AvantSMSCollector
+    from app.models.metrics import GatewayMetric
+    from app.utils.gateway_settings import get_gateway_setting
+    from app.config import settings
+
+    now = datetime.now(timezone.utc)
+    results = {}
+
+    # Sendpost — coleta por sub-account
+    try:
+        sendpost_key = await get_gateway_setting(db, "sendpost_api_key", settings.sendpost_api_key)
+        sendpost = SendpostCollector(account_api_key=sendpost_key)
+        subaccount_results = await sendpost.collect()
+        for data in subaccount_results:
+            sub_id = data.pop("subaccount_id", None)
+            sub_name = data.pop("subaccount_name", None)
+            metric = GatewayMetric(
+                time=now,
+                gateway_type="sendpost",
+                subaccount_id=sub_id,
+                subaccount_name=sub_name,
+                **data,
+            )
+            db.add(metric)
+        results["sendpost"] = {
+            "status": "ok",
+            "subaccounts": len(subaccount_results),
+            "data": subaccount_results,
+        }
+    except Exception as e:
+        logger.error("Coleta manual Sendpost falhou: %s", e)
+        results["sendpost"] = {"status": "error", "detail": str(e)}
+
+    # Avant SMS
+    try:
+        avant_token = await get_gateway_setting(db, "avant_sms_token", settings.avant_sms_token)
+        avant_base_url = await get_gateway_setting(
+            db, "avant_sms_api_base_url", settings.avant_sms_api_base_url
+        )
+        avant = AvantSMSCollector(token=avant_token, base_url=avant_base_url)
+        data = await avant.collect(db_session=db)
+        metric = GatewayMetric(time=now, gateway_type="avant_sms", **data)
+        db.add(metric)
+        results["avant_sms"] = {"status": "ok", "data": data}
+    except Exception as e:
+        logger.error("Coleta manual Avant SMS falhou: %s", e)
+        results["avant_sms"] = {"status": "error", "detail": str(e)}
+
+    await db.commit()
+    return results

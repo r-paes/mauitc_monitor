@@ -2,7 +2,6 @@
 
 import { Mail, CheckCircle, XCircle, AlertTriangle, MessageSquare, CreditCard } from "lucide-react";
 import { StatCard } from "@/components/ui/Card";
-import { Badge, statusVariant } from "@/components/ui/Badge";
 import { MESSAGES } from "@/lib/constants/ui";
 import { useAvantStats } from "@/lib/hooks/useGatewayConfig";
 import type { GatewayMetric } from "@/lib/api/metrics";
@@ -30,11 +29,18 @@ export function SendpostCards({ metrics }: SendpostCardsProps) {
     (acc, m) => ({
       sent: acc.sent + (m.emails_sent ?? 0),
       delivered: acc.delivered + (m.emails_delivered ?? 0),
-      bounced: acc.bounced + (m.emails_bounced ?? 0),
+      dropped: acc.dropped + (m.emails_dropped ?? 0),
+      hardBounced: acc.hardBounced + (m.emails_hard_bounced ?? 0),
+      softBounced: acc.softBounced + (m.emails_soft_bounced ?? 0),
+      opened: acc.opened + (m.emails_opened ?? 0),
+      clicked: acc.clicked + (m.emails_clicked ?? 0),
+      unsubscribed: acc.unsubscribed + (m.emails_unsubscribed ?? 0),
       spam: acc.spam + (m.emails_spam ?? 0),
     }),
-    { sent: 0, delivered: 0, bounced: 0, spam: 0 }
+    { sent: 0, delivered: 0, dropped: 0, hardBounced: 0, softBounced: 0, opened: 0, clicked: 0, unsubscribed: 0, spam: 0 }
   );
+
+  const totalBounces = totals.hardBounced + totals.softBounced;
 
   if (sendpost.length === 0) {
     return (
@@ -46,7 +52,7 @@ export function SendpostCards({ metrics }: SendpostCardsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Totais consolidados */}
+      {/* Cards de totais consolidados */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Emails Enviados"
@@ -62,9 +68,9 @@ export function SendpostCards({ metrics }: SendpostCardsProps) {
         />
         <StatCard
           label="Bounces"
-          value={fmt(totals.bounced)}
-          deltaOk={totals.bounced === 0}
-          delta={totals.bounced > 0 ? "Verificar lista" : "Dentro do limite"}
+          value={fmt(totalBounces)}
+          deltaOk={totalBounces === 0}
+          delta={totalBounces > 0 ? "Verificar lista" : "Dentro do limite"}
           icon={<XCircle size={18} />}
         />
         <StatCard
@@ -76,19 +82,64 @@ export function SendpostCards({ metrics }: SendpostCardsProps) {
         />
       </div>
 
-      {/* Breakdown por instância */}
-      <BreakdownTable
-        rows={sendpost.map((m) => ({
-          type: m.gateway_type,
-          status: m.status,
-          cols: [
-            { label: "Enviados",  value: fmt(m.emails_sent) },
-            { label: "Entregues", value: fmt(m.emails_delivered) },
-            { label: "Bounces",   value: fmt(m.emails_bounced) },
-            { label: "Spam",      value: fmt(m.emails_spam) },
-          ],
-        }))}
-      />
+      {/* Tabela de sub-accounts com todos os campos */}
+      <SendpostSubAccountTable metrics={sendpost} />
+    </div>
+  );
+}
+
+const SENDPOST_COLS = [
+  "Processed", "Delivered", "Dropped", "Hard Bounce",
+  "Soft Bounce", "Opened", "Clicked", "Unsubscribed", "Spam",
+] as const;
+
+function SendpostSubAccountTable({ metrics }: { metrics: GatewayMetric[] }) {
+  return (
+    <div className="w-full overflow-x-auto rounded-[var(--radius-md)] border border-[var(--color-border)]">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[var(--color-border)]">
+            <th className="px-4 py-3 text-left text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
+              Sub-account
+            </th>
+            {SENDPOST_COLS.map((h) => (
+              <th
+                key={h}
+                className="px-4 py-3 text-right text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {metrics.map((m, i) => (
+            <tr
+              key={`${m.subaccount_id ?? "all"}-${i}`}
+              className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-2)] transition-colors"
+            >
+              <td className="px-4 py-3 font-medium text-[var(--color-text)]">
+                {m.subaccount_name ?? "Conta"}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">{fmt(m.emails_sent)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">{fmt(m.emails_delivered)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">{fmt(m.emails_dropped)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">
+                <span className={(m.emails_hard_bounced ?? 0) > 0 ? "text-[var(--color-error)]" : ""}>{fmt(m.emails_hard_bounced)}</span>
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">
+                <span className={(m.emails_soft_bounced ?? 0) > 0 ? "text-[var(--color-warning)]" : ""}>{fmt(m.emails_soft_bounced)}</span>
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">{fmt(m.emails_opened)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">{fmt(m.emails_clicked)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">{fmt(m.emails_unsubscribed)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-[var(--color-text)]">
+                <span className={(m.emails_spam ?? 0) > 0 ? "text-[var(--color-error)]" : ""}>{fmt(m.emails_spam)}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -264,7 +315,7 @@ export function DeltaAlertCards({ metrics }: DeltaCardsProps) {
     (acc, m) => ({
       sent: acc.sent + (m.emails_sent ?? 0) + (m.sms_sent ?? 0),
       delivered: acc.delivered + (m.emails_delivered ?? 0) + (m.sms_delivered ?? 0),
-      failed: acc.failed + (m.emails_bounced ?? 0) + (m.sms_failed ?? 0),
+      failed: acc.failed + (m.emails_hard_bounced ?? 0) + (m.emails_soft_bounced ?? 0) + (m.sms_failed ?? 0),
     }),
     { sent: 0, delivered: 0, failed: 0 }
   );
@@ -296,12 +347,11 @@ export function DeltaAlertCards({ metrics }: DeltaCardsProps) {
       <BreakdownTable
         rows={delta.map((m) => ({
           type: m.gateway_type,
-          status: m.status,
           cols: [
             { label: "Email",    value: fmt(m.emails_sent) },
             { label: "SMS",      value: fmt(m.sms_sent) },
             { label: "Entregues", value: fmt((m.emails_delivered ?? 0) + (m.sms_delivered ?? 0)) },
-            { label: "Falhas",   value: fmt((m.emails_bounced ?? 0) + (m.sms_failed ?? 0)) },
+            { label: "Falhas",   value: fmt((m.emails_hard_bounced ?? 0) + (m.emails_soft_bounced ?? 0) + (m.sms_failed ?? 0)) },
           ],
         }))}
       />
@@ -313,7 +363,6 @@ export function DeltaAlertCards({ metrics }: DeltaCardsProps) {
 
 interface BreakdownRow {
   type: string;
-  status: string;
   cols: { label: string; value: string }[];
 }
 
@@ -328,9 +377,6 @@ function BreakdownTable({ rows }: { rows: BreakdownRow[] }) {
           <tr className="border-b border-[var(--color-border)]">
             <th className="px-4 py-3 text-left text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
               Gateway
-            </th>
-            <th className="px-4 py-3 text-left text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
-              Status
             </th>
             {headers.map((h) => (
               <th
@@ -350,11 +396,6 @@ function BreakdownTable({ rows }: { rows: BreakdownRow[] }) {
             >
               <td className="px-4 py-3 font-medium text-[var(--color-text)] capitalize">
                 {row.type}
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant={statusVariant(row.status)} dot>
-                  {MESSAGES.status[row.status as keyof typeof MESSAGES.status] ?? row.status}
-                </Badge>
               </td>
               {row.cols.map((col) => (
                 <td

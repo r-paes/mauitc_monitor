@@ -66,7 +66,7 @@ function GatewaysContent({ dateRange, setDateRange }: { dateRange: DateRange; se
             <GatewayCredentialsForm
               gateway="sendpost"
               title="Sendpost — Credenciais"
-              subtitle="API Key e e-mail remetente para envio de emails"
+              subtitle="Account API Key para coleta de métricas de todas as sub-accounts"
             />
             <GatewayCredentialsForm
               gateway="avant"
