@@ -51,24 +51,31 @@ def upgrade() -> None:
     avant_sms_status.create(op.get_bind(), checkfirst=True)
 
     # ── Converter colunas existentes: String → ENUM ──────────────────────────
-    # alerts.severity
+    # Precisa dropar defaults antes de converter (PostgreSQL não faz cast automático de default string → enum)
+
+    # alerts.severity (sem default)
     op.execute("ALTER TABLE alerts ALTER COLUMN severity TYPE alert_severity USING severity::alert_severity")
-    # alerts.notified_via
+    # alerts.notified_via (sem default)
     op.execute("ALTER TABLE alerts ALTER COLUMN notified_via TYPE notification_channel USING notified_via::notification_channel")
 
-    # service_status.status
+    # service_status.status (sem default)
     op.execute("ALTER TABLE service_status ALTER COLUMN status TYPE container_status USING status::container_status")
 
-    # service_logs.log_level
+    # service_logs.log_level (sem default)
     op.execute("ALTER TABLE service_logs ALTER COLUMN log_level TYPE log_level USING log_level::log_level")
 
-    # report_history.trigger
+    # report_history.trigger (sem default)
     op.execute("ALTER TABLE report_history ALTER COLUMN trigger TYPE report_trigger USING trigger::report_trigger")
-    # report_history.status
-    op.execute("ALTER TABLE report_history ALTER COLUMN status TYPE report_status USING status::report_status")
 
-    # avant_sms_logs.status
+    # report_history.status (tem default 'pending' — dropar, converter, re-adicionar)
+    op.execute("ALTER TABLE report_history ALTER COLUMN status DROP DEFAULT")
+    op.execute("ALTER TABLE report_history ALTER COLUMN status TYPE report_status USING status::report_status")
+    op.execute("ALTER TABLE report_history ALTER COLUMN status SET DEFAULT 'pending'::report_status")
+
+    # avant_sms_logs.status (tem default 'PENDING' — dropar, converter, re-adicionar)
+    op.execute("ALTER TABLE avant_sms_logs ALTER COLUMN status DROP DEFAULT")
     op.execute("ALTER TABLE avant_sms_logs ALTER COLUMN status TYPE avant_sms_status USING status::avant_sms_status")
+    op.execute("ALTER TABLE avant_sms_logs ALTER COLUMN status SET DEFAULT 'PENDING'::avant_sms_status")
 
     # ── FK: avant_sms_logs.cost_center_code → avant_cost_centers.code ────────
     op.create_foreign_key(
