@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     # 🐳 Docker / EasyPanel
     # -------------------------------------------------------------------------
     compose_project_name: str = "mautic-monitor"
-    easypanel_domain: str = "monitor.spacecrm.online"
+    easypanel_domain: str = "appmonitor.spacecrm.online"
     tz: str = "America/Sao_Paulo"
 
     # -------------------------------------------------------------------------
