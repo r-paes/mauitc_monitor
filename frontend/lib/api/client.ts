@@ -70,11 +70,8 @@ apiClient.interceptors.response.use(
 
     try {
       // Refresh token é enviado automaticamente via cookie HTTP-only
-      const { data } = await axios.post(
-        `${API_URL}/auth/refresh`,
-        null,
-        { withCredentials: true }
-      );
+      // Usa URL relativa — mesma origem, roteado pelo reverse proxy
+      const { data } = await apiClient.post("/auth/refresh");
 
       setAccessToken(data.access_token);
 
