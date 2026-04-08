@@ -43,7 +43,7 @@ def upgrade() -> None:
 
     # ── 2. Criar ENUM service_type e tabela instance_services ───────────────
 
-    service_type_enum = sa.Enum("database", "crons", "web", name="service_type", create_type=True)
+    service_type_enum = sa.Enum("database", "crons", "web", name="service_type", create_type=False)
     service_type_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
