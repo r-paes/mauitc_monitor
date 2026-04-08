@@ -2,14 +2,16 @@
 scheduler.py — APScheduler jobs registry.
 
 Jobs registrados:
-  1. collect_mautic_api     — a cada METRICS_COLLECT_INTERVAL_MINUTES
-  2. collect_sendpost       — a cada METRICS_COLLECT_INTERVAL_MINUTES
-  3. collect_avant_sms      — a cada METRICS_COLLECT_INTERVAL_MINUTES
-  4. collect_mautic_db      — a cada MAUTIC_DB_COLLECT_INTERVAL_MINUTES
-  5. collect_vps_ssh        — a cada VPS_COLLECT_INTERVAL_MINUTES
-  6. run_alert_engine       — a cada ALERT_ENGINE_INTERVAL_SECONDS segundos
-  7. generate_reports_am    — cron diário HH:00 BRT (REPORT_CRON_MORNING)
-  8. generate_reports_pm    — cron diário HH:00 BRT (REPORT_CRON_EVENING)
+  1. collect_mautic_api     — intervalo configurável (scheduler_configs)
+  2. collect_gateways       — intervalo configurável
+  3. collect_mautic_db      — intervalo configurável
+  4. collect_vps_ssh        — intervalo configurável (itera por VPS, não instâncias)
+  5. run_alert_engine       — intervalo configurável
+  6. generate_reports_am    — cron diário HH:00 BRT (REPORT_CRON_MORNING)
+  7. generate_reports_pm    — cron diário HH:00 BRT (REPORT_CRON_EVENING)
+
+Intervalos são lidos do banco (scheduler_configs) no startup.
+Alterações via API requerem restart do scheduler para aplicar.
 """
 
 import logging
@@ -18,6 +20,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -28,6 +31,9 @@ from app.collectors.sendpost import SendpostCollector
 from app.collectors.avant_sms import AvantSMSCollector
 from app.collectors.vps_ssh import VpsSSHCollector
 from app.models.instance import Instance
+from app.models.vps_server import VpsServer
+from app.models.instance_service import InstanceService
+from app.models.scheduler_config import SchedulerConfig
 from app.models.metrics import HealthMetric, GatewayMetric
 from app.models.vps_metrics import VpsMetric, ServiceStatus, ServiceLog
 from app.models.reports import ReportConfig
@@ -37,9 +43,33 @@ from app.utils.gateway_settings import get_gateway_setting
 from app.services.report_generator import generate_report, purge_old_reports
 from app.services.report_sender import dispatch_report
 
-from sqlalchemy import select
-
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Intervalos default (fallback se scheduler_configs ainda não existe)
+# ─────────────────────────────────────────────────────────────────────────────
+DEFAULT_INTERVALS = {
+    "mautic_api_interval": 5,
+    "mautic_db_interval": 15,
+    "vps_ssh_interval": 15,
+    "gateway_interval": 5,
+    "alert_engine_interval": 1,
+}
+
+
+async def _get_interval(key: str) -> int:
+    """Lê intervalo do banco (scheduler_configs) com fallback para default."""
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(SchedulerConfig.interval_minutes)
+                .where(SchedulerConfig.config_key == key)
+            )
+            value = result.scalar()
+            return value if value is not None else DEFAULT_INTERVALS.get(key, 5)
+    except Exception:
+        return DEFAULT_INTERVALS.get(key, 5)
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -54,7 +84,8 @@ def create_scheduler() -> AsyncIOScheduler:
         timezone=settings.scheduler_timezone,
     )
 
-    # Job 1: API Mautic + Job 2: Sendpost + Job 3: Avant SMS
+    # Intervalos são lidos do banco no startup via _setup_jobs
+    # Os jobs são adicionados com defaults e reschedulados após leitura do banco
     scheduler.add_job(
         job_collect_mautic_api,
         "interval",
@@ -73,7 +104,6 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(),
     )
 
-    # Job 4: Banco Mautic
     scheduler.add_job(
         job_collect_mautic_db,
         "interval",
@@ -83,7 +113,6 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(),
     )
 
-    # Job 5: VPS SSH
     scheduler.add_job(
         job_collect_vps_ssh,
         "interval",
@@ -93,7 +122,6 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(),
     )
 
-    # Job 6: Motor de alertas
     scheduler.add_job(
         job_run_alert_engine,
         "interval",
@@ -103,7 +131,6 @@ def create_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(),
     )
 
-    # Job 7: Relatórios — turno da manhã (REPORT_CRON_MORNING:00 BRT)
     scheduler.add_job(
         job_generate_reports,
         "cron",
@@ -114,7 +141,6 @@ def create_scheduler() -> AsyncIOScheduler:
         name=f"Relatórios Manhã ({settings.report_cron_morning:02d}:00 BRT)",
     )
 
-    # Job 8: Relatórios — turno da tarde (REPORT_CRON_EVENING:00 BRT)
     scheduler.add_job(
         job_generate_reports,
         "cron",
@@ -128,9 +154,55 @@ def create_scheduler() -> AsyncIOScheduler:
     return scheduler
 
 
+async def reschedule_from_db(scheduler: AsyncIOScheduler):
+    """Lê intervalos do banco e reagenda jobs. Chamar após startup."""
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(SchedulerConfig))
+            configs = {c.config_key: c.interval_minutes for c in result.scalars().all()}
+
+        job_map = {
+            "mautic_api_interval": "collect_mautic_api",
+            "gateway_interval": "collect_gateways",
+            "mautic_db_interval": "collect_mautic_db",
+            "vps_ssh_interval": "collect_vps_ssh",
+            "alert_engine_interval": "alert_engine",
+        }
+
+        for config_key, job_id in job_map.items():
+            if config_key in configs:
+                minutes = configs[config_key]
+                job = scheduler.get_job(job_id)
+                if job:
+                    if config_key == "alert_engine_interval":
+                        scheduler.reschedule_job(job_id, trigger="interval", seconds=minutes * 60)
+                    else:
+                        scheduler.reschedule_job(job_id, trigger="interval", minutes=minutes)
+                    logger.info("Job '%s' reagendado para %d min", job_id, minutes)
+    except Exception as e:
+        logger.warning("Não foi possível ler intervalos do banco: %s (usando defaults)", e)
+
+
 async def _get_active_instances(db: AsyncSession) -> list[Instance]:
     """Retorna todas as instâncias ativas do banco."""
     result = await db.execute(select(Instance).where(Instance.active == True))
+    return result.scalars().all()
+
+
+async def _get_active_vps_servers(db: AsyncSession) -> list[VpsServer]:
+    """Retorna todas as VPS ativas do banco."""
+    result = await db.execute(select(VpsServer).where(VpsServer.active == True))
+    return result.scalars().unique().all()
+
+
+async def _get_instance_services(db: AsyncSession, instance_id: uuid.UUID) -> list[InstanceService]:
+    """Retorna serviços ativos de uma instância."""
+    result = await db.execute(
+        select(InstanceService).where(
+            InstanceService.instance_id == instance_id,
+            InstanceService.active == True,
+        )
+    )
     return result.scalars().all()
 
 
@@ -170,7 +242,6 @@ async def job_collect_mautic_api():
                 )
                 db.add(metric)
 
-                # Verifica alertas imediatos
                 await alert_engine.check_instance_status(db, instance.id, data["status"])
                 if data.get("api_response_ms"):
                     await alert_engine.check_api_latency(db, instance.id, data["api_response_ms"])
@@ -224,7 +295,7 @@ async def job_collect_gateways():
 
 
 async def job_collect_mautic_db():
-    """Coleta métricas diretamente dos bancos PostgreSQL Mautic."""
+    """Coleta métricas diretamente dos bancos MySQL Mautic."""
     logger.debug("Job: collect_mautic_db iniciado")
     async with AsyncSessionLocal() as db:
         instances = await _get_active_instances(db)
@@ -244,7 +315,6 @@ async def job_collect_mautic_db():
                 )
                 data = await collector.collect()
 
-                # Atualiza métricas existentes do período com dados do banco
                 metric = HealthMetric(
                     time=now,
                     instance_id=instance.id,
@@ -263,36 +333,40 @@ async def job_collect_mautic_db():
 
 
 async def job_collect_vps_ssh():
-    """Coleta métricas de VPS e logs de containers via SSH."""
+    """Coleta métricas de VPS e logs de containers via SSH.
+
+    Itera por VPS ativas (não por instâncias).
+    Para cada VPS, coleta métricas de recursos.
+    Para containers, usa o mapeamento instance_services para associar
+    cada container à instância correta.
+    """
     logger.debug("Job: collect_vps_ssh iniciado")
     async with AsyncSessionLocal() as db:
-        instances = await _get_active_instances(db)
+        vps_servers = await _get_active_vps_servers(db)
         now = datetime.now(timezone.utc)
 
-        for instance in instances:
-            has_key_in_db = bool(instance.ssh_private_key_enc)
-            has_legacy_key = bool(instance.ssh_key_path)
-            if not all([instance.ssh_host, instance.ssh_user]) or not (has_key_in_db or has_legacy_key):
-                logger.debug("Instância %s sem configuração SSH, pulando.", instance.name)
+        for vps in vps_servers:
+            if not vps.host or not vps.private_key_enc:
+                logger.debug("VPS %s sem host/chave SSH, pulando.", vps.name)
                 continue
+
             try:
-                private_key_pem = decrypt_secret(instance.ssh_private_key_enc) if has_key_in_db else None
+                private_key_pem = decrypt_secret(vps.private_key_enc)
                 collector = VpsSSHCollector(
-                    host=instance.ssh_host,
-                    port=instance.ssh_port,
-                    username=instance.ssh_user,
+                    host=vps.host,
+                    port=vps.ssh_port,
+                    username=vps.ssh_user,
                     private_key_pem=private_key_pem,
-                    key_path=instance.ssh_key_path if not has_key_in_db else None,
                 )
                 snapshot = await collector.collect()
 
                 if snapshot.error:
-                    logger.warning("VPS %s: %s", instance.name, snapshot.error)
+                    logger.warning("VPS %s: %s", vps.name, snapshot.error)
 
-                # Salva métricas VPS
+                # Salva métricas VPS (por vps_id)
                 vps_metric = VpsMetric(
                     time=now,
-                    instance_id=instance.id,
+                    vps_id=vps.id,
                     cpu_percent=snapshot.cpu_percent,
                     memory_percent=snapshot.memory_percent,
                     memory_used_mb=snapshot.memory_used_mb,
@@ -306,43 +380,64 @@ async def job_collect_vps_ssh():
                 )
                 db.add(vps_metric)
 
+                # Monta mapeamento container_name → (instance_id, service)
+                # para todas as instâncias desta VPS
+                container_to_instance: dict[str, uuid.UUID] = {}
+                for instance in (vps.instances or []):
+                    if not instance.active:
+                        continue
+                    services = await _get_instance_services(db, instance.id)
+                    for svc in services:
+                        container_to_instance[svc.container_name] = instance.id
+
                 # Salva status dos containers
                 for container in snapshot.containers:
-                    svc_status = ServiceStatus(
-                        time=now,
-                        instance_id=instance.id,
-                        container_name=container["name"],
-                        status=container["status"],
-                        restart_count=container.get("restart_count"),
-                        image=container.get("image"),
-                    )
-                    db.add(svc_status)
+                    container_name = container["name"]
+                    instance_id = container_to_instance.get(container_name)
 
-                    # Alerta container parado
-                    await alert_engine.check_container_stopped(
-                        db, instance.id, container["name"], container["status"]
-                    )
+                    # Só salva se o container está mapeado a uma instância
+                    if instance_id:
+                        svc_status = ServiceStatus(
+                            time=now,
+                            instance_id=instance_id,
+                            vps_id=vps.id,
+                            container_name=container_name,
+                            status=container["status"],
+                            restart_count=container.get("restart_count"),
+                            image=container.get("image"),
+                        )
+                        db.add(svc_status)
 
-                # Salva logs filtrados
+                        # Alerta container parado
+                        await alert_engine.check_container_stopped(
+                            db, instance_id, container_name, container["status"]
+                        )
+
+                # Salva logs filtrados (apenas de containers mapeados)
                 for entry in snapshot.log_entries:
-                    svc_log = ServiceLog(
-                        instance_id=instance.id,
-                        container_name=entry["container_name"],
-                        log_level=entry["log_level"],
-                        message=entry["message"],
-                        pattern_matched=entry.get("pattern_matched"),
-                        captured_at=entry["captured_at"],
-                    )
-                    db.add(svc_log)
+                    container_name = entry["container_name"]
+                    instance_id = container_to_instance.get(container_name)
 
-                # Verifica alertas de recursos
-                await alert_engine.check_vps_cpu(db, instance.id, snapshot.cpu_percent)
-                await alert_engine.check_vps_memory(db, instance.id, snapshot.memory_percent)
-                await alert_engine.check_vps_disk(db, instance.id, snapshot.disk_percent)
-                await alert_engine.check_log_patterns(db, instance.id, snapshot.log_entries)
+                    if instance_id:
+                        svc_log = ServiceLog(
+                            instance_id=instance_id,
+                            vps_id=vps.id,
+                            container_name=container_name,
+                            log_level=entry["log_level"],
+                            message=entry["message"],
+                            pattern_matched=entry.get("pattern_matched"),
+                            captured_at=entry["captured_at"],
+                        )
+                        db.add(svc_log)
+
+                # Verifica alertas de recursos da VPS
+                await alert_engine.check_vps_cpu(db, vps.id, snapshot.cpu_percent)
+                await alert_engine.check_vps_memory(db, vps.id, snapshot.memory_percent)
+                await alert_engine.check_vps_disk(db, vps.id, snapshot.disk_percent)
+                await alert_engine.check_log_patterns(db, None, snapshot.log_entries, vps_id=vps.id)
 
             except Exception as e:
-                logger.error("Erro ao coletar VPS SSH para %s: %s", instance.name, e)
+                logger.error("Erro ao coletar VPS SSH para %s: %s", vps.name, e)
 
         await db.commit()
 
@@ -350,9 +445,6 @@ async def job_collect_vps_ssh():
 async def job_generate_reports():
     """
     Gera e envia relatórios para todas as ReportConfigs ativas.
-    Executa nos horários definidos por REPORT_CRON_MORNING e REPORT_CRON_EVENING.
-    Cada config é processada de forma independente — falha em uma não afeta as demais.
-    Ao final, purga arquivos mais antigos que REPORT_RETENTION_DAYS.
     """
     logger.info("Job: generate_reports iniciado")
     async with AsyncSessionLocal() as db:
@@ -372,7 +464,6 @@ async def job_generate_reports():
                 history = await generate_report(db=db, config=config, trigger="scheduled")
 
                 if history.status == "success":
-                    # Credenciais do banco com fallback para .env
                     sp_key = await get_gateway_setting(db, "sendpost_subaccount_api_key", settings.sendpost_api_key)
                     sp_from = await get_gateway_setting(db, "sendpost_alert_from_email", settings.sendpost_alert_from_email)
                     av_token = await get_gateway_setting(db, "avant_sms_token", settings.avant_sms_token)
@@ -403,7 +494,6 @@ async def job_generate_reports():
                     "Erro inesperado ao processar config %s: %s", config.id, e
                 )
 
-        # Limpeza de arquivos antigos (roda uma vez por job, não por config)
         try:
             removed = await purge_old_reports(db)
             if removed:
@@ -415,10 +505,6 @@ async def job_generate_reports():
 async def job_run_alert_engine():
     """
     Motor de alertas periódico — avalia Delta Alerts entre Mautic e Gateways.
-    Roda com mais frequência para detectar anomalias rapidamente.
     """
     logger.debug("Job: alert_engine iniciado")
-    # Delta alerts são avaliados aqui comparando os últimos registros
-    # do health_metrics com os gateway_metrics
-    # Implementação detalhada na Fase 2
     pass

@@ -3,6 +3,8 @@ instance.py — Modelos de instâncias Mautic, empresas e credenciais de conexã
 
 Credenciais são armazenadas criptografadas (Fernet) em tabelas separadas,
 cada uma com FK 1:1 para a instância, garantindo modularidade.
+
+SSH pertence à VPS (vps_servers), não à instância.
 """
 
 import uuid
@@ -26,6 +28,12 @@ class Instance(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     url: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    # VPS onde esta instância está hospedada (opcional)
+    vps_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vps_servers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Metadados
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -44,12 +52,17 @@ class Instance(Base):
         "InstanceDbCredential", back_populates="instance",
         uselist=False, cascade="all, delete-orphan", lazy="joined",
     )
-    ssh_creds: Mapped["InstanceSshCredential"] = relationship(
-        "InstanceSshCredential", back_populates="instance",
-        uselist=False, cascade="all, delete-orphan", lazy="joined",
-    )
     companies: Mapped[list["Company"]] = relationship(
         "Company", back_populates="instance", cascade="all, delete-orphan"
+    )
+    services: Mapped[list["InstanceService"]] = relationship(
+        "InstanceService", back_populates="instance", cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    # VPS associada
+    vps: Mapped["VpsServer"] = relationship(
+        "VpsServer", back_populates="instances", lazy="joined",
     )
 
     # ── Propriedades de conveniência (compatibilidade com código existente) ──
@@ -82,29 +95,26 @@ class Instance(Base):
     def db_password_enc(self) -> str | None:
         return self.db_creds.password_enc if self.db_creds else None
 
+    # SSH agora vem da VPS associada
     @property
     def ssh_host(self) -> str | None:
-        return self.ssh_creds.host if self.ssh_creds else None
+        return self.vps.host if self.vps else None
 
     @property
     def ssh_port(self) -> int:
-        return self.ssh_creds.port if self.ssh_creds else 22
+        return self.vps.ssh_port if self.vps else 22
 
     @property
     def ssh_user(self) -> str | None:
-        return self.ssh_creds.username if self.ssh_creds else None
-
-    @property
-    def ssh_key_path(self) -> str | None:
-        return self.ssh_creds.key_path if self.ssh_creds else None
+        return self.vps.ssh_user if self.vps else None
 
     @property
     def ssh_private_key_enc(self) -> str | None:
-        return self.ssh_creds.private_key_enc if self.ssh_creds else None
+        return self.vps.private_key_enc if self.vps else None
 
     @property
     def ssh_public_key(self) -> str | None:
-        return self.ssh_creds.public_key if self.ssh_creds else None
+        return self.vps.public_key if self.vps else None
 
     def __repr__(self) -> str:
         return f"<Instance {self.name} ({self.url})>"
@@ -140,23 +150,6 @@ class InstanceDbCredential(Base):
 
     instance: Mapped["Instance"] = relationship("Instance", back_populates="db_creds")
 
-
-class InstanceSshCredential(Base):
-    """Credenciais SSH para monitoramento VPS de uma instância."""
-
-    __tablename__ = "instance_ssh_credentials"
-
-    instance_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instances.id", ondelete="CASCADE"), primary_key=True
-    )
-    host: Mapped[str] = mapped_column(String(255), nullable=False)
-    port: Mapped[int] = mapped_column(Integer, default=22)
-    username: Mapped[str] = mapped_column(String(100), default="root")
-    key_path: Mapped[str | None] = mapped_column(String(500))  # legado
-    private_key_enc: Mapped[str | None] = mapped_column(Text)  # RSA Fernet
-    public_key: Mapped[str | None] = mapped_column(Text)       # RSA público
-
-    instance: Mapped["Instance"] = relationship("Instance", back_populates="ssh_creds")
 
 
 class Company(Base):

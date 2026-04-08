@@ -36,6 +36,10 @@ class Alert(Base):
     instance_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("instances.id", ondelete="SET NULL"), nullable=True
     )
+    # Alertas de VPS (CPU, memória, disco) — sem FK real (consistência com hypertables)
+    vps_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
     severity: Mapped[str] = mapped_column(
         Enum(AlertSeverity, name="alert_severity", create_constraint=True, native_enum=True),

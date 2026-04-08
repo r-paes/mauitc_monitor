@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import engine, Base
-from app.scheduler import create_scheduler
-from app.routers import auth, instances, metrics, vps, alerts, users, reports, gateways, avant, webhooks
+from app.scheduler import create_scheduler, reschedule_from_db
+from app.routers import auth, instances, metrics, vps, alerts, users, reports, gateways, avant, webhooks, vps_servers, scheduler_config
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -43,6 +43,9 @@ async def lifespan(app: FastAPI):
     # Inicia scheduler de jobs
     scheduler.start()
     logger.info("Scheduler iniciado com %d jobs", len(scheduler.get_jobs()))
+
+    # Reagenda jobs com intervalos do banco (scheduler_configs)
+    await reschedule_from_db(scheduler)
 
     yield
 
@@ -85,6 +88,8 @@ app.include_router(users.router, prefix=settings.api_v1_prefix)
 app.include_router(reports.router, prefix=settings.api_v1_prefix)
 app.include_router(gateways.router, prefix=settings.api_v1_prefix)
 app.include_router(avant.router, prefix=settings.api_v1_prefix)
+app.include_router(vps_servers.router, prefix=settings.api_v1_prefix)
+app.include_router(scheduler_config.router, prefix=settings.api_v1_prefix)
 app.include_router(webhooks.router)
 
 

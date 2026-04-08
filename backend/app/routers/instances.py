@@ -1,13 +1,14 @@
 """
-routers/instances.py — CRUD de instâncias Mautic + gerenciamento de chaves SSH.
+routers/instances.py — CRUD de instâncias Mautic + gerenciamento de serviços.
 
 A API mantém formato flat (campos de credencial no mesmo nível) para
 compatibilidade com o frontend. Internamente, credenciais vivem em
 tabelas separadas (1:1 com Instance).
+
+SSH pertence à VPS (vps_servers), não à instância.
 """
 
 import uuid
-from io import StringIO
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,32 +17,37 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.instance import (
-    Instance, InstanceApiCredential, InstanceDbCredential, InstanceSshCredential,
-)
+from app.models.instance import Instance, InstanceApiCredential, InstanceDbCredential
+from app.models.instance_service import InstanceService, ServiceType
 from app.routers.auth import get_current_user
 from app.models.users import User
-from app.utils.crypto import encrypt_secret, decrypt_secret
+from app.utils.crypto import encrypt_secret
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
 
-# ─── Schemas (API flat — frontend não muda) ─────────────────────────────────
+# ─── Schemas ────────────────────────────────────────────────────────────────
 
 class InstanceCreate(BaseModel):
     name: str
     url: str
     api_user: str
     api_password: str
+    vps_id: Optional[str] = None
     db_host: Optional[str] = None
     db_port: int = 3306
     db_name: Optional[str] = None
     db_user: Optional[str] = None
     db_password: Optional[str] = None
-    ssh_host: Optional[str] = None
-    ssh_port: int = 22
-    ssh_user: Optional[str] = None
-    ssh_key_path: Optional[str] = None
+
+
+class ServiceOut(BaseModel):
+    id: str
+    service_type: str
+    container_name: str
+    active: bool
+
+    model_config = {"from_attributes": True}
 
 
 class InstanceOut(BaseModel):
@@ -49,13 +55,11 @@ class InstanceOut(BaseModel):
     name: str
     url: str
     api_user: Optional[str] = None
+    vps_id: Optional[str] = None
+    vps_name: Optional[str] = None
     db_host: Optional[str] = None
-    ssh_host: Optional[str] = None
-    ssh_port: int = 22
-    ssh_user: Optional[str] = None
-    ssh_key_path: Optional[str] = None
-    ssh_public_key: Optional[str] = None
     active: bool
+    services: list[ServiceOut] = []
 
 
 class InstanceUpdate(BaseModel):
@@ -64,64 +68,48 @@ class InstanceUpdate(BaseModel):
     api_user: Optional[str] = None
     api_password: Optional[str] = None
     active: Optional[bool] = None
+    vps_id: Optional[str] = None
     db_host: Optional[str] = None
     db_port: Optional[int] = None
     db_name: Optional[str] = None
     db_user: Optional[str] = None
     db_password: Optional[str] = None
-    ssh_host: Optional[str] = None
-    ssh_port: Optional[int] = None
-    ssh_user: Optional[str] = None
-    ssh_key_path: Optional[str] = None
 
 
-class SshKeyOut(BaseModel):
-    public_key: str
+class ServiceCreate(BaseModel):
+    service_type: str  # database | crons | web
+    container_name: str
 
 
-class SshTestResult(BaseModel):
-    success: bool
-    message: str
+class ServiceUpdate(BaseModel):
+    container_name: Optional[str] = None
+    active: Optional[bool] = None
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+# ─── Helpers ────────────────────────────────────────────────────────────────
 
 def _instance_to_out(inst: Instance) -> InstanceOut:
     """Converte Instance (com relationships) para resposta flat."""
+    services = [
+        ServiceOut(
+            id=str(s.id),
+            service_type=s.service_type if isinstance(s.service_type, str) else s.service_type.value,
+            container_name=s.container_name,
+            active=s.active,
+        )
+        for s in (inst.services or [])
+    ]
     return InstanceOut(
         id=str(inst.id),
         name=inst.name,
         url=inst.url,
         api_user=inst.api_user,
+        vps_id=str(inst.vps_id) if inst.vps_id else None,
+        vps_name=inst.vps.name if inst.vps else None,
         db_host=inst.db_host,
-        ssh_host=inst.ssh_host,
-        ssh_port=inst.ssh_port,
-        ssh_user=inst.ssh_user,
-        ssh_key_path=inst.ssh_key_path,
-        ssh_public_key=inst.ssh_public_key,
         active=inst.active,
+        services=services,
     )
-
-
-def _generate_rsa_keypair() -> tuple[str, str]:
-    """Gera par de chaves RSA 4096 bits. Retorna (private_pem, public_openssh)."""
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.hazmat.backends import default_backend
-
-    private_key = rsa.generate_private_key(
-        public_exponent=65537, key_size=4096, backend=default_backend(),
-    )
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.OpenSSH,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("utf-8")
-    public_openssh = private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.OpenSSH,
-        format=serialization.PublicFormat.OpenSSH,
-    ).decode("utf-8")
-    return private_pem, public_openssh
 
 
 def _get_instance_or_404(instance, instance_id: uuid.UUID) -> Instance:
@@ -132,7 +120,7 @@ def _get_instance_or_404(instance, instance_id: uuid.UUID) -> Instance:
     return instance
 
 
-# ─── Endpoints ───────────────────────────────────────────────────────────────
+# ─── Endpoints — Instâncias ─────────────────────────────────────────────────
 
 @router.get("/", response_model=list[InstanceOut])
 async def list_instances(
@@ -152,7 +140,11 @@ async def create_instance(
     if current_user.role not in ("admin",):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
 
-    instance = Instance(name=data.name, url=data.url)
+    instance = Instance(
+        name=data.name,
+        url=data.url,
+        vps_id=uuid.UUID(data.vps_id) if data.vps_id else None,
+    )
 
     # API credentials (obrigatório)
     instance.api_creds = InstanceApiCredential(
@@ -168,15 +160,6 @@ async def create_instance(
             dbname=data.db_name,
             username=data.db_user,
             password_enc=encrypt_secret(data.db_password) if data.db_password else "",
-        )
-
-    # SSH credentials (opcional)
-    if data.ssh_host:
-        instance.ssh_creds = InstanceSshCredential(
-            host=data.ssh_host,
-            port=data.ssh_port,
-            username=data.ssh_user or "root",
-            key_path=data.ssh_key_path,
         )
 
     db.add(instance)
@@ -216,6 +199,10 @@ async def update_instance(
         if field in updates:
             setattr(instance, field, updates[field])
 
+    # VPS association
+    if "vps_id" in updates:
+        instance.vps_id = uuid.UUID(updates["vps_id"]) if updates["vps_id"] else None
+
     # API credentials
     api_fields = {k: updates[k] for k in ("api_user", "api_password") if k in updates}
     if api_fields:
@@ -253,25 +240,6 @@ async def update_instance(
         if "db_password" in db_fields:
             instance.db_creds.password_enc = encrypt_secret(db_fields["db_password"])
 
-    # SSH credentials
-    ssh_fields = {k: updates[k] for k in ("ssh_host", "ssh_port", "ssh_user", "ssh_key_path") if k in updates}
-    if ssh_fields:
-        if not instance.ssh_creds:
-            instance.ssh_creds = InstanceSshCredential(
-                instance_id=instance.id,
-                host=ssh_fields.get("ssh_host", ""),
-                port=ssh_fields.get("ssh_port", 22),
-                username=ssh_fields.get("ssh_user", "root"),
-            )
-        if "ssh_host" in ssh_fields:
-            instance.ssh_creds.host = ssh_fields["ssh_host"]
-        if "ssh_port" in ssh_fields:
-            instance.ssh_creds.port = ssh_fields["ssh_port"]
-        if "ssh_user" in ssh_fields:
-            instance.ssh_creds.username = ssh_fields["ssh_user"]
-        if "ssh_key_path" in ssh_fields:
-            instance.ssh_creds.key_path = ssh_fields["ssh_key_path"]
-
     await db.commit()
     await db.refresh(instance)
     return _instance_to_out(instance)
@@ -292,82 +260,122 @@ async def delete_instance(
     await db.commit()
 
 
-@router.post("/{instance_id}/generate-ssh-key", response_model=SshKeyOut)
-async def generate_ssh_key(
-    instance_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Gera novo par RSA 4096. Privada armazenada Fernet. Pública retornada."""
-    if current_user.role not in ("admin",):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
+# ─── Endpoints — Serviços (containers monitorados) ─────────────────────────
 
-    result = await db.execute(select(Instance).where(Instance.id == instance_id))
-    instance = _get_instance_or_404(result.scalars().first(), instance_id)
-
-    private_pem, public_openssh = _generate_rsa_keypair()
-
-    if not instance.ssh_creds:
-        instance.ssh_creds = InstanceSshCredential(
-            instance_id=instance.id,
-            host=instance.ssh_host or "",
-            username=instance.ssh_user or "root",
-        )
-
-    instance.ssh_creds.private_key_enc = encrypt_secret(private_pem)
-    instance.ssh_creds.public_key = public_openssh
-
-    await db.commit()
-    return SshKeyOut(public_key=public_openssh)
-
-
-@router.post("/{instance_id}/test-ssh", response_model=SshTestResult)
-async def test_ssh_connection(
+@router.get("/{instance_id}/services", response_model=list[ServiceOut])
+async def list_services(
     instance_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Testa conexão SSH com a VPS usando a chave privada armazenada."""
-    import asyncio
-    import paramiko
+    result = await db.execute(
+        select(InstanceService)
+        .where(InstanceService.instance_id == instance_id)
+        .order_by(InstanceService.service_type)
+    )
+    return [
+        ServiceOut(
+            id=str(s.id),
+            service_type=s.service_type if isinstance(s.service_type, str) else s.service_type.value,
+            container_name=s.container_name,
+            active=s.active,
+        )
+        for s in result.scalars().all()
+    ]
 
+
+@router.post("/{instance_id}/services", response_model=ServiceOut, status_code=status.HTTP_201_CREATED)
+async def create_service(
+    instance_id: uuid.UUID,
+    data: ServiceCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin",):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
+
+    # Valida que a instância existe
     result = await db.execute(select(Instance).where(Instance.id == instance_id))
-    instance = _get_instance_or_404(result.scalars().first(), instance_id)
+    if not result.scalars().first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instância não encontrada")
 
-    if not instance.ssh_host:
-        return SshTestResult(success=False, message="Host SSH não configurado.")
+    # Valida service_type
+    if data.service_type not in [st.value for st in ServiceType]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Tipo inválido. Valores aceitos: {[st.value for st in ServiceType]}",
+        )
 
-    if not instance.ssh_private_key_enc:
-        return SshTestResult(success=False, message="Chave SSH não gerada. Clique em 'Gerar Chave' primeiro.")
+    service = InstanceService(
+        instance_id=instance_id,
+        service_type=data.service_type,
+        container_name=data.container_name,
+    )
+    db.add(service)
+    await db.commit()
+    await db.refresh(service)
+    return ServiceOut(
+        id=str(service.id),
+        service_type=service.service_type if isinstance(service.service_type, str) else service.service_type.value,
+        container_name=service.container_name,
+        active=service.active,
+    )
 
-    private_pem = decrypt_secret(instance.ssh_private_key_enc)
-    if not private_pem:
-        return SshTestResult(success=False, message="Falha ao decriptar chave privada.")
 
-    def _do_test() -> SshTestResult:
-        try:
-            key = paramiko.RSAKey.from_private_key(StringIO(private_pem))
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(
-                hostname=instance.ssh_host,
-                port=instance.ssh_port or 22,
-                username=instance.ssh_user or "root",
-                pkey=key, timeout=10,
-                look_for_keys=False, allow_agent=False,
-            )
-            _, stdout, _ = client.exec_command("echo ok", timeout=5)
-            output = stdout.read().decode().strip()
-            client.close()
-            if output == "ok":
-                return SshTestResult(success=True, message="Conexão SSH estabelecida com sucesso.")
-            return SshTestResult(success=False, message=f"Resposta inesperada: {output}")
-        except paramiko.AuthenticationException:
-            return SshTestResult(
-                success=False,
-                message="Autenticação negada. Verifique se a chave pública foi adicionada em ~/.ssh/authorized_keys na VPS.",
-            )
-        except Exception as e:
-            return SshTestResult(success=False, message=f"Erro de conexão: {e}")
+@router.patch("/{instance_id}/services/{service_id}", response_model=ServiceOut)
+async def update_service(
+    instance_id: uuid.UUID,
+    service_id: uuid.UUID,
+    data: ServiceUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin",):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
 
-    return await asyncio.get_event_loop().run_in_executor(None, _do_test)
+    result = await db.execute(
+        select(InstanceService).where(
+            InstanceService.id == service_id,
+            InstanceService.instance_id == instance_id,
+        )
+    )
+    service = result.scalars().first()
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serviço não encontrado")
+
+    updates = data.model_dump(exclude_none=True)
+    for field, value in updates.items():
+        setattr(service, field, value)
+
+    await db.commit()
+    await db.refresh(service)
+    return ServiceOut(
+        id=str(service.id),
+        service_type=service.service_type if isinstance(service.service_type, str) else service.service_type.value,
+        container_name=service.container_name,
+        active=service.active,
+    )
+
+
+@router.delete("/{instance_id}/services/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_service(
+    instance_id: uuid.UUID,
+    service_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in ("admin",):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
+
+    result = await db.execute(
+        select(InstanceService).where(
+            InstanceService.id == service_id,
+            InstanceService.instance_id == instance_id,
+        )
+    )
+    service = result.scalars().first()
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Serviço não encontrado")
+
+    await db.delete(service)
+    await db.commit()

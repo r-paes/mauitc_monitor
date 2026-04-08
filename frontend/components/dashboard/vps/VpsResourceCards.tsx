@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Cpu, MemoryStick, HardDrive, Pencil, Trash2, Terminal } from "lucide-react";
+import { Cpu, MemoryStick, HardDrive, Pencil, Trash2, Terminal, Server } from "lucide-react";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { MESSAGES } from "@/lib/constants/ui";
-import { useDeleteInstance } from "@/lib/hooks/useInstances";
+import { useDeleteVpsServer } from "@/lib/hooks/useVpsServers";
 import { VpsFormModal } from "./VpsFormModal";
 import type { VpsMetric } from "@/lib/api/vps";
-import type { Instance } from "@/lib/api/instances";
+import type { VpsServer } from "@/lib/api/vps-servers";
 
 function fmt(n: number | null | undefined, unit = "") {
   if (n == null) return "—";
@@ -53,12 +53,12 @@ function UsageBar({ pct }: { pct: number | null }) {
 
 interface VpsCardProps {
   metric: VpsMetric | null;
-  instance: Instance;
-  onEdit: (i: Instance) => void;
-  onDelete: (i: Instance) => void;
+  vps: VpsServer;
+  onEdit: (v: VpsServer) => void;
+  onDelete: (v: VpsServer) => void;
 }
 
-function VpsCard({ metric, instance, onEdit, onDelete }: VpsCardProps) {
+function VpsCard({ metric, vps, onEdit, onDelete }: VpsCardProps) {
   const overallStatus =
     metric == null
       ? "warning"
@@ -83,9 +83,9 @@ function VpsCard({ metric, instance, onEdit, onDelete }: VpsCardProps) {
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-[var(--color-text)] truncate">
-                {instance.name}
+                {vps.name}
               </p>
-              {instance.ssh_host ? (
+              {vps.public_key ? (
                 <Badge variant="info">
                   <Terminal size={10} className="mr-1" />
                   SSH
@@ -93,26 +93,30 @@ function VpsCard({ metric, instance, onEdit, onDelete }: VpsCardProps) {
               ) : (
                 <Badge variant="warning">Sem SSH</Badge>
               )}
+              {vps.instance_count > 0 && (
+                <Badge variant="neutral">
+                  <Server size={10} className="mr-1" />
+                  {vps.instance_count} inst.
+                </Badge>
+              )}
             </div>
-            {instance.ssh_host && (
-              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 font-mono">
-                {instance.ssh_user ?? "root"}@{instance.ssh_host}:{instance.ssh_port ?? 22}
-                {metric && ` · load: ${fmt(metric.load_avg_1m)}`}
-              </p>
-            )}
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 font-mono">
+              {vps.ssh_user}@{vps.host}:{vps.ssh_port}
+              {metric && ` · load: ${fmt(metric.load_avg_1m)}`}
+            </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <Badge variant={overallStatus} dot>{statusLabel}</Badge>
             <button
-              onClick={() => onEdit(instance)}
+              onClick={() => onEdit(vps)}
               className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-nav-active)] transition-colors"
               title="Editar VPS"
             >
               <Pencil size={13} />
             </button>
             <button
-              onClick={() => onDelete(instance)}
+              onClick={() => onDelete(vps)}
               className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-critical)] hover:bg-[var(--color-nav-active)] transition-colors"
               title="Remover VPS"
             >
@@ -173,7 +177,7 @@ function VpsCard({ metric, instance, onEdit, onDelete }: VpsCardProps) {
         </div>
       ) : (
         <div className="px-5 py-6 text-sm text-[var(--color-text-muted)]">
-          {instance.ssh_host
+          {vps.public_key
             ? "Aguardando primeira coleta via SSH..."
             : "Configure o acesso SSH para monitorar esta VPS."}
         </div>
@@ -184,21 +188,21 @@ function VpsCard({ metric, instance, onEdit, onDelete }: VpsCardProps) {
 
 interface Props {
   metrics: VpsMetric[];
-  instances: Instance[];
+  vpsServers: VpsServer[];
 }
 
-export function VpsResourceCards({ metrics, instances }: Props) {
-  const [editTarget, setEditTarget] = useState<Instance | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Instance | null>(null);
-  const { mutate: remove, isPending: deleting } = useDeleteInstance();
+export function VpsResourceCards({ metrics, vpsServers }: Props) {
+  const [editTarget, setEditTarget] = useState<VpsServer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VpsServer | null>(null);
+  const { mutate: remove, isPending: deleting } = useDeleteVpsServer();
 
-  // Índice métrica mais recente por instance_id
-  const metricByInstance = metrics.reduce<Record<string, VpsMetric>>((acc, m) => {
-    if (!acc[m.instance_id]) acc[m.instance_id] = m;
+  // Índice métrica mais recente por vps_id
+  const metricByVps = metrics.reduce<Record<string, VpsMetric>>((acc, m) => {
+    if (!acc[m.vps_id]) acc[m.vps_id] = m;
     return acc;
   }, {});
 
-  if (!instances.length) {
+  if (!vpsServers.length) {
     return (
       <p className="py-10 text-center text-sm text-[var(--color-text-muted)]">
         {MESSAGES.emptyStates.vps}
@@ -223,18 +227,18 @@ export function VpsResourceCards({ metrics, instances }: Props) {
     <div className="space-y-6">
       {/* Resumo global */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="CPU Médio"    value={avg(totals.cpu)}  icon={<Cpu size={18} />} />
+        <StatCard label="CPU Médio"     value={avg(totals.cpu)}  icon={<Cpu size={18} />} />
         <StatCard label="Memória Média" value={avg(totals.mem)}  icon={<MemoryStick size={18} />} />
-        <StatCard label="Disco Médio"  value={avg(totals.disk)} icon={<HardDrive size={18} />} />
+        <StatCard label="Disco Médio"   value={avg(totals.disk)} icon={<HardDrive size={18} />} />
       </div>
 
       {/* Cards por VPS */}
       <div className="space-y-4">
-        {instances.map((inst) => (
+        {vpsServers.map((vps) => (
           <VpsCard
-            key={inst.id}
-            instance={inst}
-            metric={metricByInstance[inst.id] ?? null}
+            key={vps.id}
+            vps={vps}
+            metric={metricByVps[vps.id] ?? null}
             onEdit={setEditTarget}
             onDelete={setDeleteTarget}
           />

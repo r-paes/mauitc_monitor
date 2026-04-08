@@ -1,5 +1,8 @@
 """
 routers/vps.py — Endpoints de métricas e logs de VPS.
+
+Métricas de recursos (CPU, RAM, disco) são por VPS (vps_id).
+Status de containers e logs mantêm referência a instance_id e vps_id.
 """
 
 import uuid
@@ -8,7 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -22,7 +25,7 @@ router = APIRouter(prefix="/vps", tags=["vps"])
 class VpsMetricOut(BaseModel):
     id: uuid.UUID
     time: datetime
-    instance_id: uuid.UUID
+    vps_id: uuid.UUID
     cpu_percent: Optional[float]
     memory_percent: Optional[float]
     memory_used_mb: Optional[int]
@@ -41,6 +44,7 @@ class ServiceStatusOut(BaseModel):
     id: uuid.UUID
     time: datetime
     instance_id: uuid.UUID
+    vps_id: uuid.UUID
     container_name: str
     status: str
     restart_count: Optional[int]
@@ -52,6 +56,7 @@ class ServiceStatusOut(BaseModel):
 class ServiceLogOut(BaseModel):
     id: uuid.UUID
     instance_id: uuid.UUID
+    vps_id: uuid.UUID
     container_name: str
     log_level: str
     message: str
@@ -63,7 +68,7 @@ class ServiceLogOut(BaseModel):
 
 @router.get("/metrics", response_model=list[VpsMetricOut])
 async def get_vps_metrics(
-    instance_id: Optional[uuid.UUID] = Query(None),
+    vps_id: Optional[uuid.UUID] = Query(None),
     hours: int = Query(default=24, ge=1, le=720),
     limit: int = Query(default=100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
@@ -73,8 +78,8 @@ async def get_vps_metrics(
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     query = select(VpsMetric).where(VpsMetric.time >= since)
 
-    if instance_id:
-        query = query.where(VpsMetric.instance_id == instance_id)
+    if vps_id:
+        query = query.where(VpsMetric.vps_id == vps_id)
 
     query = query.order_by(desc(VpsMetric.time)).limit(limit)
     result = await db.execute(query)
@@ -83,17 +88,26 @@ async def get_vps_metrics(
 
 @router.get("/services", response_model=list[ServiceStatusOut])
 async def get_service_status(
+    vps_id: Optional[uuid.UUID] = Query(None),
     instance_id: Optional[uuid.UUID] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Retorna status atual dos containers Docker por instância."""
-    from sqlalchemy import text
-    query = text("""
+    """Retorna status atual dos containers Docker. Filtra por VPS ou instância."""
+    conditions = []
+    if vps_id:
+        conditions.append(f"vps_id = '{vps_id}'")
+    if instance_id:
+        conditions.append(f"instance_id = '{instance_id}'")
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    query = text(f"""
         SELECT DISTINCT ON (instance_id, container_name)
-            id, time, instance_id, container_name, status,
+            id, time, instance_id, vps_id, container_name, status,
             restart_count, image
         FROM service_status
+        {where_clause}
         ORDER BY instance_id, container_name, time DESC
     """)
     result = await db.execute(query)
@@ -102,6 +116,7 @@ async def get_service_status(
 
 @router.get("/logs", response_model=list[ServiceLogOut])
 async def get_service_logs(
+    vps_id: Optional[uuid.UUID] = Query(None),
     instance_id: Optional[uuid.UUID] = Query(None),
     log_level: Optional[str] = Query(None, pattern="^(info|warning|error|critical)$"),
     hours: int = Query(default=24, ge=1, le=168),
@@ -113,6 +128,8 @@ async def get_service_logs(
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     query = select(ServiceLog).where(ServiceLog.captured_at >= since)
 
+    if vps_id:
+        query = query.where(ServiceLog.vps_id == vps_id)
     if instance_id:
         query = query.where(ServiceLog.instance_id == instance_id)
     if log_level:

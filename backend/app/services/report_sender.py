@@ -12,7 +12,6 @@ from pathlib import Path
 import httpx
 
 from app.config import settings
-from app.collectors.avant_sms import AVANT_SEND_URL
 from app.models.reports import ReportConfig, ReportHistory
 
 logger = logging.getLogger(__name__)
@@ -144,7 +143,7 @@ async def send_report_sms(
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             response = await client.post(
-                AVANT_SEND_URL,
+                settings.avant_sms_send_url,
                 json=payload,
                 headers={
                     "Authorization": f"alpha {sms_token}",

@@ -12,7 +12,7 @@ import { VpsFormModal } from "@/components/dashboard/vps/VpsFormModal";
 import { ContainersTable } from "@/components/dashboard/vps/ContainersTable";
 import { LogsTable } from "@/components/dashboard/vps/LogsTable";
 import { useVpsMetrics } from "@/lib/hooks/useVps";
-import { useInstances } from "@/lib/hooks/useInstances";
+import { useVpsServers } from "@/lib/hooks/useVpsServers";
 import { useDashboard } from "@/lib/hooks/useMetrics";
 import { useTabParam } from "@/lib/hooks/useTabParam";
 import { MESSAGES, PAGE_TABS } from "@/lib/constants/ui";
@@ -22,14 +22,14 @@ function VpsContent() {
   const [formOpen, setFormOpen] = useState(false);
 
   const { data: vpsMetrics, isLoading: loadingVps, refetch } = useVpsMetrics();
-  const { data: instances, isLoading: loadingInstances } = useInstances();
+  const { data: vpsServers, isLoading: loadingServers } = useVpsServers();
   const { data: dashboard, isLoading: loadingDashboard } = useDashboard();
 
-  const isLoading = loadingVps || loadingDashboard || loadingInstances;
+  const isLoading = loadingVps || loadingServers || loadingDashboard;
 
-  // Mapa instance_id → name para logs e containers
-  const instanceNames: Record<string, string> = Object.fromEntries(
-    (dashboard?.instances ?? []).map((i) => [i.id, i.name])
+  // Mapa vps_id → name para logs e containers
+  const vpsNames: Record<string, string> = Object.fromEntries(
+    (vpsServers ?? []).map((v) => [v.id, v.name])
   );
 
   const topnavTabs = (
@@ -77,7 +77,7 @@ function VpsContent() {
             {activeTab === "resources" && (
               <VpsResourceCards
                 metrics={vpsMetrics ?? []}
-                instances={instances ?? []}
+                vpsServers={vpsServers ?? []}
               />
             )}
 
@@ -88,7 +88,7 @@ function VpsContent() {
             )}
 
             {activeTab === "logs" && (
-              <LogsTable instanceNames={instanceNames} />
+              <LogsTable instanceNames={vpsNames} />
             )}
           </>
         )}

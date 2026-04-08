@@ -6,29 +6,29 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { MESSAGES } from "@/lib/constants/ui";
 import {
-  useCreateInstance,
-  useUpdateInstance,
-  useGenerateSshKey,
-  useTestSsh,
-} from "@/lib/hooks/useInstances";
-import type { Instance } from "@/lib/api/instances";
+  useCreateVpsServer,
+  useUpdateVpsServer,
+  useGenerateVpsSshKey,
+  useTestVpsSsh,
+} from "@/lib/hooks/useVpsServers";
+import type { VpsServer } from "@/lib/api/vps-servers";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  vps?: Instance | null;
+  vps?: VpsServer | null;
 }
 
 interface FormState {
   name: string;
-  ssh_host: string;
+  host: string;
   ssh_port: string;
   ssh_user: string;
 }
 
 const EMPTY: FormState = {
   name: "",
-  ssh_host: "",
+  host: "",
   ssh_port: "22",
   ssh_user: "root",
 };
@@ -85,8 +85,8 @@ function Step1({ form, set, onSubmit, isPending, onClose }: Step1Props) {
             <Field label="Host / IP" required>
               <input
                 className={inputCls}
-                value={form.ssh_host}
-                onChange={(e) => set("ssh_host", e.target.value)}
+                value={form.host}
+                onChange={(e) => set("host", e.target.value)}
                 placeholder="vps.exemplo.com"
                 required
               />
@@ -134,16 +134,16 @@ function Step1({ form, set, onSubmit, isPending, onClose }: Step1Props) {
 // ─── Passo 2: Chave pública + teste de conexão ────────────────────────────────
 
 interface Step2Props {
-  instanceId: string;
+  vpsId: string;
   publicKey: string;
   onClose: () => void;
   onRegenerateKey: () => void;
   isRegenerating: boolean;
 }
 
-function Step2({ instanceId, publicKey, onClose, onRegenerateKey, isRegenerating }: Step2Props) {
+function Step2({ vpsId, publicKey, onClose, onRegenerateKey, isRegenerating }: Step2Props) {
   const [copied, setCopied] = useState(false);
-  const { mutate: testSsh, isPending: testing, data: testResult } = useTestSsh();
+  const { mutate: testSsh, isPending: testing, data: testResult } = useTestVpsSsh();
 
   function handleCopy() {
     navigator.clipboard.writeText(publicKey).then(() => {
@@ -224,7 +224,7 @@ function Step2({ instanceId, publicKey, onClose, onRegenerateKey, isRegenerating
           size="sm"
           icon={<Wifi size={13} />}
           loading={testing}
-          onClick={() => testSsh(instanceId)}
+          onClick={() => testSsh(vpsId)}
         >
           Testar conexão
         </Button>
@@ -245,23 +245,22 @@ export function VpsFormModal({ open, onClose, vps }: Props) {
   const [createdId, setCreatedId] = useState<string>("");
   const [publicKey, setPublicKey] = useState<string>("");
 
-  const { mutate: create, isPending: creating } = useCreateInstance();
-  const { mutate: update, isPending: updating } = useUpdateInstance();
-  const { mutate: generateKey, isPending: generatingKey } = useGenerateSshKey();
+  const { mutate: create, isPending: creating } = useCreateVpsServer();
+  const { mutate: update, isPending: updating } = useUpdateVpsServer();
+  const { mutate: generateKey, isPending: generatingKey } = useGenerateVpsSshKey();
 
   useEffect(() => {
     if (open) {
       if (isEdit && vps) {
         setForm({
           name: vps.name,
-          ssh_host: vps.ssh_host ?? "",
+          host: vps.host,
           ssh_port: String(vps.ssh_port ?? 22),
           ssh_user: vps.ssh_user ?? "root",
         });
-        // Se já tem chave pública, vai direto para o passo 2 de gestão
-        if (vps.ssh_public_key) {
+        if (vps.public_key) {
           setCreatedId(vps.id);
-          setPublicKey(vps.ssh_public_key);
+          setPublicKey(vps.public_key);
           setStep(2);
         } else {
           setStep(1);
@@ -282,7 +281,7 @@ export function VpsFormModal({ open, onClose, vps }: Props) {
   function handleStep1Submit(e: React.FormEvent) {
     e.preventDefault();
 
-    const onInstanceReady = (id: string) => {
+    const onVpsReady = (id: string) => {
       generateKey(id, {
         onSuccess: (data) => {
           setCreatedId(id);
@@ -298,26 +297,23 @@ export function VpsFormModal({ open, onClose, vps }: Props) {
           id: vps.id,
           data: {
             name: form.name,
-            ssh_host: form.ssh_host || undefined,
+            host: form.host || undefined,
             ssh_port: form.ssh_port ? Number(form.ssh_port) : undefined,
             ssh_user: form.ssh_user || undefined,
           },
         },
-        { onSuccess: () => onInstanceReady(vps.id) }
+        { onSuccess: () => onVpsReady(vps.id) }
       );
     } else {
       create(
         {
           name: form.name,
-          url: `ssh://${form.ssh_host}`,
-          api_user: "vps",
-          api_password: "vps",
-          ssh_host: form.ssh_host || undefined,
+          host: form.host,
           ssh_port: form.ssh_port ? Number(form.ssh_port) : undefined,
           ssh_user: form.ssh_user || undefined,
         },
         {
-          onSuccess: (created) => onInstanceReady(created.id),
+          onSuccess: (created) => onVpsReady(created.id),
         }
       );
     }
@@ -362,7 +358,7 @@ export function VpsFormModal({ open, onClose, vps }: Props) {
 
       {step === 2 && (
         <Step2
-          instanceId={createdId}
+          vpsId={createdId}
           publicKey={publicKey}
           onClose={onClose}
           onRegenerateKey={() =>

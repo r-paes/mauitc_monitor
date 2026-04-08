@@ -74,7 +74,7 @@ function InstancesContent() {
 
         {activeTab === "config" && (
           <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">
-            Configurações globais de monitoramento — em breve.
+            Configurações globais de monitoramento de instâncias — em breve.
           </div>
         )}
 

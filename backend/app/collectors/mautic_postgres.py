@@ -15,6 +15,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Intervalos válidos — whitelist para prevenir SQL injection via .format()
+VALID_INTERVALS = frozenset({"1 hour", "6 hours", "12 hours", "24 hours", "7 days", "30 days"})
+
 # Queries SQL — externalizadas como constantes para facilitar manutenção
 QUERY_EMAIL_QUEUE = """
     SELECT COUNT(*) AS queued
@@ -94,6 +97,9 @@ class MauticDBCollector:
 
     async def get_emails_sent(self, interval: str = "1 hour") -> int | None:
         """Retorna emails enviados no intervalo especificado."""
+        if interval not in VALID_INTERVALS:
+            logger.error("Intervalo inválido rejeitado: %s", interval)
+            return None
         try:
             conn = await self._connect()
             query = QUERY_EMAILS_SENT_LAST_PERIOD.format(interval=interval)
@@ -106,6 +112,9 @@ class MauticDBCollector:
 
     async def get_sms_sent(self, interval: str = "1 hour") -> int | None:
         """Retorna SMS enviados no intervalo especificado."""
+        if interval not in VALID_INTERVALS:
+            logger.error("Intervalo inválido rejeitado: %s", interval)
+            return None
         try:
             conn = await self._connect()
             query = QUERY_SMS_SENT_LAST_PERIOD.format(interval=interval)

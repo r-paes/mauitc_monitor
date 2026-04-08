@@ -2,7 +2,7 @@ import { apiClient } from "./client";
 
 export interface VpsMetric {
   time: string;
-  instance_id: string;
+  vps_id: string;
   cpu_percent: number | null;
   memory_percent: number | null;
   memory_used_mb: number | null;
@@ -16,22 +16,26 @@ export interface VpsMetric {
 export interface ServiceLog {
   id: string;
   instance_id: string;
+  vps_id: string;
   instance_name?: string;
   container_name: string;
-  log_level: "CRIT" | "ERROR" | "WARN" | "INFO";
+  log_level: "critical" | "error" | "warning" | "info";
   message: string;
   pattern_matched: string | null;
   captured_at: string;
 }
 
 export const vpsApi = {
-  list: (params?: { instance_id?: string }) =>
-    apiClient.get<VpsMetric[]>("/vps/", { params }).then((r) => r.data),
+  metrics: (params?: { vps_id?: string; hours?: number; limit?: number }) =>
+    apiClient.get<VpsMetric[]>("/vps/metrics", { params }).then((r) => r.data),
+
+  services: (params?: { vps_id?: string; instance_id?: string }) =>
+    apiClient.get("/vps/services", { params }).then((r) => r.data),
 
   logs: (params?: {
+    vps_id?: string;
     instance_id?: string;
-    container?: string;
-    level?: string;
+    log_level?: string;
     limit?: number;
   }) =>
     apiClient.get<ServiceLog[]>("/vps/logs", { params }).then((r) => r.data),

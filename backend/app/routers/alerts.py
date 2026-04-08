@@ -22,6 +22,7 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 class AlertOut(BaseModel):
     id: uuid.UUID
     instance_id: Optional[uuid.UUID]
+    vps_id: Optional[uuid.UUID]
     severity: str
     type: str
     message: str
@@ -36,6 +37,7 @@ class AlertOut(BaseModel):
 @router.get("/", response_model=list[AlertOut])
 async def list_alerts(
     instance_id: Optional[uuid.UUID] = Query(None),
+    vps_id: Optional[uuid.UUID] = Query(None),
     severity: Optional[str] = Query(None, pattern="^(info|warning|critical)$"),
     resolved: Optional[bool] = Query(None),
     hours: int = Query(default=72, ge=1, le=8760),
@@ -48,6 +50,8 @@ async def list_alerts(
 
     if instance_id:
         query = query.where(Alert.instance_id == instance_id)
+    if vps_id:
+        query = query.where(Alert.vps_id == vps_id)
     if severity:
         query = query.where(Alert.severity == severity)
     if resolved is not None:

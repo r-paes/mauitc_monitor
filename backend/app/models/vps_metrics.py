@@ -1,12 +1,16 @@
 """
 vps_metrics.py — Métricas de recursos das VPS + status de containers + logs de serviços.
+
+VPS metrics agora referenciados por vps_id (VpsServer).
+Service status/logs mantêm instance_id (container pertence a uma instância)
+e adicionam vps_id (origem da coleta SSH).
 """
 
 import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,11 +36,12 @@ class VpsMetric(Base):
     """
     Métricas de recursos do sistema coletadas via SSH.
     TimescaleDB hypertable particionada por 'time'.
+    Referência: vps_id (sem FK real — hypertable não suporta).
     """
 
     __tablename__ = "vps_metrics"
     __table_args__ = (
-        Index("ix_vps_metrics_time_instance", "time", "instance_id"),
+        Index("ix_vps_metrics_time_vps", "time", "vps_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -45,8 +50,9 @@ class VpsMetric(Base):
     time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True, server_default=func.now()
     )
-    instance_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+    # Referência à VPS (sem FK — hypertable TimescaleDB)
+    vps_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
     )
 
     # CPU
@@ -77,6 +83,7 @@ class ServiceStatus(Base):
     __tablename__ = "service_status"
     __table_args__ = (
         Index("ix_service_status_time_instance", "time", "instance_id"),
+        Index("ix_service_status_time_vps", "time", "vps_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -85,8 +92,13 @@ class ServiceStatus(Base):
     time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True, server_default=func.now()
     )
+    # Container pertence a uma instância
     instance_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), nullable=False
+    )
+    # Coletado da VPS
+    vps_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
     )
     container_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
@@ -108,13 +120,19 @@ class ServiceLog(Base):
     __tablename__ = "service_logs"
     __table_args__ = (
         Index("ix_service_logs_instance_captured", "instance_id", "captured_at"),
+        Index("ix_service_logs_vps_captured", "vps_id", "captured_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    # Container pertence a uma instância
     instance_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instances.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), nullable=False
+    )
+    # Coletado da VPS
+    vps_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
     )
     container_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
@@ -123,7 +141,7 @@ class ServiceLog(Base):
         nullable=False,
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    pattern_matched: Mapped[str | None] = mapped_column(String(100))  # qual regra detectou
+    pattern_matched: Mapped[str | None] = mapped_column(String(100))
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )

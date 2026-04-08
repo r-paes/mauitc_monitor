@@ -227,15 +227,48 @@ coletando métricas de performance, alertas e status de envio via API, banco de 
 
 ---
 
-## Próximos Passos (Próxima Sessão)
+## Reestruturação VPS vs Instâncias (2026-04-07)
 
-1. **Redeploy frontend** com últimas alterações de cards/percentuais
-2. **Configurar Avant SMS** (Token + URL + Webhook + Cost Centers)
-3. **Configurar SubAccount API Key** Sendpost para envio de alertas
-4. **Cadastrar instância Mautic real** com credenciais API + MySQL
-5. **Testar alertas** com dados reais
-6. **Testar relatórios** com dados reais
-7. **Completar Etapa 6** (backup, scheduler check)
+### Concluído
+- **Fase 1:** Novos modelos `VpsServer`, `InstanceService`, `SchedulerConfig` + migration 010
+- **Fase 2:** Novos routers `vps_servers`, `scheduler_config` + ajustes em instances, vps, scheduler
+- **Fase 3:** Frontend — API layer, hooks, componentes VPS reescritos para usar `VpsServer`
+- **Fase 4:** Frontend — `ServiceManager` (CRUD containers), `SchedulerSettings` (intervalos editáveis)
+- **Fase 5:** Frontend — Tab "Intervalos" em Settings
+- **Fase 6 — Auditoria:**
+  - S1: `vps_id` adicionado ao modelo Alert + migration 011 + engine/scheduler corrigidos
+  - S2: `SchedulerSettings` movido para `components/dashboard/settings/`
+  - S3: `__init__.py` adicionado em `backend/app/services/`
+  - S4: `UserOut` duplicado renomeado para `UserAuthOut` em `auth.py`
+  - S5: Whitelist de intervalos SQL no collector PostgreSQL
+  - S7 (parcial): `AVANT_SEND_URL` movida de collector para `config.py` (desacoplamento alert↔collector)
+
+### Pendente — Prioridade 2 (Melhorias Estruturais Futuras)
+
+**S6. Criar camada de serviço para gateways**
+- Criar `backend/app/services/gateway_service.py`
+- Mover instanciação de `SendpostCollector` e `AvantSMSCollector` de `routers/gateways.py` e `routers/avant.py` para o service
+- Routers chamam service, não collectors diretamente
+- Benefício: testabilidade, reuso entre scheduler e API, menor acoplamento
+
+**S7. Completar desacoplamento de módulos**
+- Avaliar extração de job implementations do `scheduler.py` para módulos separados (ex: `jobs/collect_vps.py`)
+- Separar criação de alertas da notificação no `alerts/engine.py` (criar `alerts/dispatcher.py`)
+- Benefício: scheduler como orquestrador puro, cada job isolado e testável
+
+---
+
+## Próximos Passos
+
+1. **Redeploy backend + frontend** com todas as alterações (Fases 1-6)
+2. **Executar migration 010 + 011** no banco de produção
+3. **Configurar Avant SMS** (Token + URL + Webhook + Cost Centers)
+4. **Configurar SubAccount API Key** Sendpost para envio de alertas
+5. **Cadastrar instância Mautic real** com credenciais API + MySQL
+6. **Cadastrar VPS real** e associar instâncias
+7. **Testar alertas** com dados reais
+8. **Testar relatórios** com dados reais
+9. **Completar Etapa 6** (backup, scheduler check)
 
 ---
 

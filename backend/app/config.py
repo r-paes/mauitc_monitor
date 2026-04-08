@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     avant_sms_token: str
     avant_sms_alert_from: str = "SpaceCRM"
 
+    @property
+    def avant_sms_send_url(self) -> str:
+        """URL completa para envio de SMS via Avant."""
+        return f"{self.avant_sms_api_base_url}/message/send"
+
     # -------------------------------------------------------------------------
     # 🚨 Regras de Alerta — Thresholds
     # -------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2, Check, Minus } from "lucide-react";
+import { Pencil, Trash2, Check, Minus, Server } from "lucide-react";
 import { Table } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -55,16 +55,36 @@ export function InstancesTable({ data, isLoading, onEdit }: Props) {
       ),
     },
     {
-      key: "ssh",
-      header: "SSH",
-      align: "center" as const,
-      render: (row: Instance) => <StatusIcon ok={!!row.ssh_host} />,
+      key: "vps",
+      header: "VPS",
+      render: (row: Instance) =>
+        row.vps_name ? (
+          <Badge variant="info">
+            <Server size={10} className="mr-1" />
+            {row.vps_name}
+          </Badge>
+        ) : (
+          <Minus size={14} className="text-[var(--color-text-muted)]" />
+        ),
     },
     {
       key: "db",
       header: "DB",
       align: "center" as const,
       render: (row: Instance) => <StatusIcon ok={!!row.db_host} />,
+    },
+    {
+      key: "services",
+      header: "Serviços",
+      align: "center" as const,
+      render: (row: Instance) => {
+        const count = row.services?.length ?? 0;
+        return count > 0 ? (
+          <Badge variant="neutral">{count}</Badge>
+        ) : (
+          <Minus size={14} className="text-[var(--color-text-muted)]" />
+        );
+      },
     },
     {
       key: "actions",

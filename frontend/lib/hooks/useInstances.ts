@@ -1,5 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { instancesApi, type InstanceCreate, type InstanceUpdate } from "@/lib/api/instances";
+import {
+  instancesApi,
+  type InstanceCreate,
+  type InstanceUpdate,
+  type ServiceCreate,
+  type ServiceUpdate,
+} from "@/lib/api/instances";
 
 export const INSTANCES_KEY = ["instances"] as const;
 
@@ -43,16 +49,31 @@ export function useDeleteInstance() {
   });
 }
 
-export function useGenerateSshKey() {
+// ─── Services (containers monitorados) ─────────────────────────────────────
+
+export function useCreateService() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => instancesApi.generateSshKey(id),
+    mutationFn: ({ instanceId, data }: { instanceId: string; data: ServiceCreate }) =>
+      instancesApi.createService(instanceId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: INSTANCES_KEY }),
   });
 }
 
-export function useTestSsh() {
+export function useUpdateService() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => instancesApi.testSsh(id),
+    mutationFn: ({ instanceId, serviceId, data }: { instanceId: string; serviceId: string; data: ServiceUpdate }) =>
+      instancesApi.updateService(instanceId, serviceId, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: INSTANCES_KEY }),
+  });
+}
+
+export function useDeleteService() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ instanceId, serviceId }: { instanceId: string; serviceId: string }) =>
+      instancesApi.removeService(instanceId, serviceId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: INSTANCES_KEY }),
   });
 }

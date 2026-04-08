@@ -19,9 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.alerts import Alert
-from app.models.metrics import HealthMetric, GatewayMetric
 from app.models.users import User
-from app.models.vps_metrics import VpsMetric, ServiceStatus
 from app.alerts.email_alert import send_alert_email
 from app.alerts.sms_alert import send_alert_sms
 from app.utils.gateway_settings import get_gateway_setting
@@ -49,19 +47,24 @@ async def _is_in_cooldown(
     db: AsyncSession,
     instance_id: Optional[uuid.UUID],
     alert_type: str,
+    vps_id: Optional[uuid.UUID] = None,
 ) -> bool:
     """Verifica se já existe alerta recente do mesmo tipo (cooldown)."""
     cooldown_since = datetime.now(timezone.utc) - timedelta(
         minutes=settings.alert_cooldown_minutes
     )
-    query = select(Alert).where(
-        and_(
-            Alert.type == alert_type,
-            Alert.instance_id == instance_id,
-            Alert.created_at >= cooldown_since,
-            Alert.resolved_at.is_(None),
-        )
-    )
+    conditions = [
+        Alert.type == alert_type,
+        Alert.created_at >= cooldown_since,
+        Alert.resolved_at.is_(None),
+    ]
+    # Cooldown por instance_id OU vps_id conforme o contexto
+    if vps_id:
+        conditions.append(Alert.vps_id == vps_id)
+    else:
+        conditions.append(Alert.instance_id == instance_id)
+
+    query = select(Alert).where(and_(*conditions))
     result = await db.execute(query)
     return result.scalars().first() is not None
 
@@ -72,12 +75,13 @@ async def _create_alert(
     alert_type: str,
     message: str,
     instance_id: Optional[uuid.UUID] = None,
+    vps_id: Optional[uuid.UUID] = None,
 ) -> Alert | None:
     """Cria alerta no banco e dispara notificações conforme severidade."""
 
     # Verifica cooldown
-    if await _is_in_cooldown(db, instance_id, alert_type):
-        logger.debug("Alerta %s em cooldown para instância %s", alert_type, instance_id)
+    if await _is_in_cooldown(db, instance_id, alert_type, vps_id=vps_id):
+        logger.debug("Alerta %s em cooldown (instance=%s, vps=%s)", alert_type, instance_id, vps_id)
         return None
 
     # Define canal de notificação
@@ -85,6 +89,7 @@ async def _create_alert(
 
     alert = Alert(
         instance_id=instance_id,
+        vps_id=vps_id,
         severity=severity,
         type=alert_type,
         message=message,
@@ -188,57 +193,63 @@ async def check_zero_contacts(db: AsyncSession, instance_id: uuid.UUID, new_cont
         )
 
 
-async def check_vps_cpu(db: AsyncSession, instance_id: uuid.UUID, cpu_percent: float | None):
-    """Alerta por uso elevado de CPU."""
+async def check_vps_cpu(
+    db: AsyncSession, vps_id: uuid.UUID | None, cpu_percent: float | None,
+):
+    """Alerta por uso elevado de CPU na VPS."""
     if cpu_percent is None:
         return
     if cpu_percent >= settings.alert_threshold_cpu_critical:
         await _create_alert(
             db, SEVERITY_CRITICAL, "high_cpu",
             f"CPU crítica: {cpu_percent}% (threshold crítico: {settings.alert_threshold_cpu_critical}%).",
-            instance_id=instance_id,
+            vps_id=vps_id,
         )
     elif cpu_percent >= settings.alert_threshold_cpu_warning:
         await _create_alert(
             db, SEVERITY_WARNING, "high_cpu",
             f"CPU elevada: {cpu_percent}% (threshold: {settings.alert_threshold_cpu_warning}%).",
-            instance_id=instance_id,
+            vps_id=vps_id,
         )
 
 
-async def check_vps_memory(db: AsyncSession, instance_id: uuid.UUID, memory_percent: float | None):
-    """Alerta por uso elevado de memória."""
+async def check_vps_memory(
+    db: AsyncSession, vps_id: uuid.UUID | None, memory_percent: float | None,
+):
+    """Alerta por uso elevado de memória na VPS."""
     if memory_percent is None:
         return
     if memory_percent >= settings.alert_threshold_memory_critical:
         await _create_alert(
             db, SEVERITY_CRITICAL, "high_memory",
             f"Memória crítica: {memory_percent}% (threshold crítico: {settings.alert_threshold_memory_critical}%).",
-            instance_id=instance_id,
+            vps_id=vps_id,
         )
     elif memory_percent >= settings.alert_threshold_memory_warning:
         await _create_alert(
             db, SEVERITY_WARNING, "high_memory",
             f"Memória elevada: {memory_percent}% (threshold: {settings.alert_threshold_memory_warning}%).",
-            instance_id=instance_id,
+            vps_id=vps_id,
         )
 
 
-async def check_vps_disk(db: AsyncSession, instance_id: uuid.UUID, disk_percent: float | None):
-    """Alerta por uso elevado de disco."""
+async def check_vps_disk(
+    db: AsyncSession, vps_id: uuid.UUID | None, disk_percent: float | None,
+):
+    """Alerta por uso elevado de disco na VPS."""
     if disk_percent is None:
         return
     if disk_percent >= settings.alert_threshold_disk_critical:
         await _create_alert(
             db, SEVERITY_CRITICAL, "high_disk",
             f"Disco crítico: {disk_percent}% (threshold crítico: {settings.alert_threshold_disk_critical}%).",
-            instance_id=instance_id,
+            vps_id=vps_id,
         )
     elif disk_percent >= settings.alert_threshold_disk_warning:
         await _create_alert(
             db, SEVERITY_WARNING, "high_disk",
             f"Disco elevado: {disk_percent}% (threshold: {settings.alert_threshold_disk_warning}%).",
-            instance_id=instance_id,
+            vps_id=vps_id,
         )
 
 
@@ -311,8 +322,9 @@ async def check_sms_delta(
 
 async def check_log_patterns(
     db: AsyncSession,
-    instance_id: uuid.UUID,
+    instance_id: uuid.UUID | None,
     log_entries: list[dict],
+    vps_id: uuid.UUID | None = None,
 ):
     """Gera alertas para padrões críticos detectados nos logs das VPS."""
     for entry in log_entries:
@@ -322,4 +334,5 @@ async def check_log_patterns(
             db, severity, entry.get("pattern_matched", "log_error"),
             f"[{entry['container_name']}] {entry['message'][:200]}",
             instance_id=instance_id,
+            vps_id=vps_id,
         )

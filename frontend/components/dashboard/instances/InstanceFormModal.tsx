@@ -5,6 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { MESSAGES } from "@/lib/constants/ui";
 import { useCreateInstance, useUpdateInstance } from "@/lib/hooks/useInstances";
+import { useVpsServers } from "@/lib/hooks/useVpsServers";
+import { ServiceManager } from "./ServiceManager";
 import type { Instance } from "@/lib/api/instances";
 
 interface Props {
@@ -19,16 +21,12 @@ interface FormState {
   api_user: string;
   api_password: string;
   active: boolean;
-  // create-only
+  vps_id: string;
   db_host: string;
   db_port: string;
   db_name: string;
   db_user: string;
   db_password: string;
-  ssh_host: string;
-  ssh_port: string;
-  ssh_user: string;
-  ssh_key_path: string;
 }
 
 const EMPTY: FormState = {
@@ -37,15 +35,12 @@ const EMPTY: FormState = {
   api_user: "",
   api_password: "",
   active: true,
+  vps_id: "",
   db_host: "",
   db_port: "3306",
   db_name: "",
   db_user: "",
   db_password: "",
-  ssh_host: "",
-  ssh_port: "22",
-  ssh_user: "",
-  ssh_key_path: "",
 };
 
 function Field({
@@ -71,6 +66,9 @@ function Field({
 const inputCls =
   "w-full h-8 px-3 text-sm rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-primary)] transition-colors";
 
+const selectCls =
+  "w-full h-8 px-3 text-sm rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)] transition-colors";
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] pb-1 border-b border-[var(--color-border)] mb-3">
@@ -85,6 +83,7 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
 
   const { mutate: create, isPending: creating } = useCreateInstance();
   const { mutate: update, isPending: updating } = useUpdateInstance();
+  const { data: vpsServers } = useVpsServers();
   const isPending = creating || updating;
 
   useEffect(() => {
@@ -97,6 +96,7 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
               url: instance.url,
               api_user: instance.api_user,
               active: instance.active,
+              vps_id: instance.vps_id ?? "",
             }
           : EMPTY
       );
@@ -119,6 +119,7 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
             api_user: form.api_user,
             ...(form.api_password ? { api_password: form.api_password } : {}),
             active: form.active,
+            vps_id: form.vps_id || null,
           },
         },
         { onSuccess: onClose }
@@ -130,15 +131,12 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
           url: form.url,
           api_user: form.api_user,
           api_password: form.api_password,
+          vps_id: form.vps_id || undefined,
           db_host: form.db_host || undefined,
           db_port: form.db_port ? Number(form.db_port) : undefined,
           db_name: form.db_name || undefined,
           db_user: form.db_user || undefined,
           db_password: form.db_password || undefined,
-          ssh_host: form.ssh_host || undefined,
-          ssh_port: form.ssh_port ? Number(form.ssh_port) : undefined,
-          ssh_user: form.ssh_user || undefined,
-          ssh_key_path: form.ssh_key_path || undefined,
         },
         { onSuccess: onClose }
       );
@@ -212,21 +210,51 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
               />
             </Field>
           </div>
-          {isEdit && (
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                id="active-toggle"
-                type="checkbox"
-                checked={form.active}
-                onChange={(e) => set("active", e.target.checked)}
-                className="h-4 w-4 accent-[var(--color-primary)]"
-              />
-              <label htmlFor="active-toggle" className="text-sm text-[var(--color-text)]">
-                Instância ativa
-              </label>
-            </div>
-          )}
         </div>
+
+        {/* VPS associada */}
+        <div>
+          <SectionTitle>VPS Associada</SectionTitle>
+          <Field label="VPS">
+            <select
+              className={selectCls}
+              value={form.vps_id}
+              onChange={(e) => set("vps_id", e.target.value)}
+            >
+              <option value="">Nenhuma VPS</option>
+              {(vpsServers ?? []).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.host})
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        {isEdit && (
+          <div className="flex items-center gap-2">
+            <input
+              id="active-toggle"
+              type="checkbox"
+              checked={form.active}
+              onChange={(e) => set("active", e.target.checked)}
+              className="h-4 w-4 accent-[var(--color-primary)]"
+            />
+            <label htmlFor="active-toggle" className="text-sm text-[var(--color-text)]">
+              Instância ativa
+            </label>
+          </div>
+        )}
+
+        {/* Serviços monitorados — somente edição */}
+        {isEdit && instance && (
+          <div className="border-t border-[var(--color-border)] pt-4">
+            <ServiceManager
+              instanceId={instance.id}
+              services={instance.services ?? []}
+            />
+          </div>
+        )}
 
         {/* Banco de Dados — somente criação */}
         {!isEdit && (
@@ -273,48 +301,6 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
                   value={form.db_password}
                   onChange={(e) => set("db_password", e.target.value)}
                   placeholder={MESSAGES.placeholders.password}
-                />
-              </Field>
-            </div>
-          </div>
-        )}
-
-        {/* SSH — somente criação */}
-        {!isEdit && (
-          <div>
-            <SectionTitle>Acesso SSH</SectionTitle>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Host SSH">
-                <input
-                  className={inputCls}
-                  value={form.ssh_host}
-                  onChange={(e) => set("ssh_host", e.target.value)}
-                  placeholder="vps.exemplo.com"
-                />
-              </Field>
-              <Field label="Porta SSH">
-                <input
-                  className={inputCls}
-                  type="number"
-                  value={form.ssh_port}
-                  onChange={(e) => set("ssh_port", e.target.value)}
-                  placeholder="22"
-                />
-              </Field>
-              <Field label="Usuário SSH">
-                <input
-                  className={inputCls}
-                  value={form.ssh_user}
-                  onChange={(e) => set("ssh_user", e.target.value)}
-                  placeholder="root"
-                />
-              </Field>
-              <Field label="Caminho da chave SSH">
-                <input
-                  className={inputCls}
-                  value={form.ssh_key_path}
-                  onChange={(e) => set("ssh_key_path", e.target.value)}
-                  placeholder="/root/.ssh/id_rsa"
                 />
               </Field>
             </div>

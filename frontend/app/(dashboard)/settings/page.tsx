@@ -6,6 +6,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { SchedulerSettings } from "@/components/dashboard/settings/SchedulerSettings";
 import { useTabParam } from "@/lib/hooks/useTabParam";
 import { MESSAGES, PAGE_TABS } from "@/lib/constants/ui";
 
@@ -25,7 +26,7 @@ const inputCls =
   "w-full h-8 px-3 text-sm rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)] transition-colors";
 
 function SettingsContent() {
-  const [activeTab, setTab] = useTabParam("thresholds");
+  const [activeTab, setTab] = useTabParam("general");
   const [thresholds, setThresholds] = useState(
     Object.fromEntries(DEFAULT_THRESHOLDS.map((t) => [t.key, t.value]))
   );
@@ -62,7 +63,7 @@ function SettingsContent() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
-                  Intervalo de atualização automática (segundos)
+                  Intervalo de atualização do dashboard (segundos)
                 </label>
                 <input type="number" className={inputCls} defaultValue="60" />
               </div>
@@ -73,6 +74,10 @@ function SettingsContent() {
               </Button>
             </div>
           </Card>
+        )}
+
+        {activeTab === "scheduler" && (
+          <SchedulerSettings />
         )}
 
         {activeTab === "thresholds" && (

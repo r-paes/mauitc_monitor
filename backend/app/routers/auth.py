@@ -36,7 +36,8 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
 
 
-class UserOut(BaseModel):
+class UserAuthOut(BaseModel):
+    """Resposta mínima de autenticação — sem dados sensíveis ou perfil completo."""
     id: uuid_mod.UUID
     name: str
     email: str
@@ -205,6 +206,6 @@ async def logout(response: Response):
     return {"detail": "Logout realizado"}
 
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me", response_model=UserAuthOut)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user

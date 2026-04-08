@@ -115,6 +115,7 @@ export const PAGE_TABS = {
   ],
   settings: [
     { key: "general",       label: "Geral" },
+    { key: "scheduler",     label: "Intervalos" },
     { key: "thresholds",    label: "Thresholds" },
     { key: "notifications", label: "Notificações" },
   ],

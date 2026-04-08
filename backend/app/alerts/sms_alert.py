@@ -12,7 +12,6 @@ import logging
 import httpx
 
 from app.config import settings
-from app.collectors.avant_sms import AVANT_SEND_URL
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ async def send_alert_sms(
             headers=headers,
             timeout=settings.mautic_timeout_seconds,
         ) as client:
-            resp = await client.post(AVANT_SEND_URL, json=payload)
+            resp = await client.post(settings.avant_sms_send_url, json=payload)
             resp.raise_for_status()
             logger.info("SMS de alerta enviado para %s (%s)", to_phone, alert_type)
             return True
