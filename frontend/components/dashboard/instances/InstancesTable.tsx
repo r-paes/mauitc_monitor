@@ -142,8 +142,19 @@ export function InstancesTable({ data, isLoading, onEdit }: Props) {
         ),
     },
     {
+      key: "mysql",
+      header: "MySQL",
+      align: "center" as const,
+      render: (row: Instance) =>
+        row.db_host ? (
+          <Badge variant="ok" dot>Conectado</Badge>
+        ) : (
+          <Minus size={14} className="text-[var(--color-text-muted)]" />
+        ),
+    },
+    {
       key: "web",
-      header: "Web",
+      header: "Cont. Web",
       align: "center" as const,
       render: (row: Instance) => (
         <ServiceCell
@@ -156,7 +167,7 @@ export function InstancesTable({ data, isLoading, onEdit }: Props) {
     },
     {
       key: "db",
-      header: "DB",
+      header: "Cont. DB",
       align: "center" as const,
       render: (row: Instance) => (
         <ServiceCell
@@ -169,7 +180,7 @@ export function InstancesTable({ data, isLoading, onEdit }: Props) {
     },
     {
       key: "crons",
-      header: "Crons",
+      header: "Cont. Crons",
       align: "center" as const,
       render: (row: Instance) => (
         <ServiceCell
