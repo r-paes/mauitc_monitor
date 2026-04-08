@@ -224,7 +224,7 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
               <option value="">Nenhuma VPS</option>
               {(vpsServers ?? []).map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.name} ({v.host})
+                  {v.name}
                 </option>
               ))}
             </select>
