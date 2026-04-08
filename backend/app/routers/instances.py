@@ -58,6 +58,9 @@ class InstanceOut(BaseModel):
     vps_id: Optional[str] = None
     vps_name: Optional[str] = None
     db_host: Optional[str] = None
+    db_port: Optional[int] = None
+    db_name: Optional[str] = None
+    db_user: Optional[str] = None
     active: bool
     services: list[ServiceOut] = []
 
@@ -107,6 +110,9 @@ def _instance_to_out(inst: Instance) -> InstanceOut:
         vps_id=str(inst.vps_id) if inst.vps_id else None,
         vps_name=inst.vps.name if inst.vps else None,
         db_host=inst.db_host,
+        db_port=inst.db_port,
+        db_name=inst.db_name,
+        db_user=inst.db_user,
         active=inst.active,
         services=services,
     )

@@ -15,6 +15,9 @@ export interface Instance {
   vps_id: string | null;
   vps_name: string | null;
   db_host: string | null;
+  db_port: number | null;
+  db_name: string | null;
+  db_user: string | null;
   active: boolean;
   services: InstanceService[];
 }

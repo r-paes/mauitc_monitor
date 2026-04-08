@@ -97,6 +97,11 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
               api_user: instance.api_user,
               active: instance.active,
               vps_id: instance.vps_id ?? "",
+              db_host: instance.db_host ?? "",
+              db_port: instance.db_port ? String(instance.db_port) : "3306",
+              db_name: instance.db_name ?? "",
+              db_user: instance.db_user ?? "",
+              db_password: "",
             }
           : EMPTY
       );
@@ -120,6 +125,11 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
             ...(form.api_password ? { api_password: form.api_password } : {}),
             active: form.active,
             vps_id: form.vps_id || null,
+            db_host: form.db_host || undefined,
+            db_port: form.db_port ? Number(form.db_port) : undefined,
+            db_name: form.db_name || undefined,
+            db_user: form.db_user || undefined,
+            ...(form.db_password ? { db_password: form.db_password } : {}),
           },
         },
         { onSuccess: onClose }
@@ -257,56 +267,54 @@ export function InstanceFormModal({ open, onClose, instance }: Props) {
           </div>
         )}
 
-        {/* Banco de Dados — somente criação */}
-        {!isEdit && (
-          <div>
-            <SectionTitle>Banco de Dados (MySQL)</SectionTitle>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Host">
-                <input
-                  className={inputCls}
-                  value={form.db_host}
-                  onChange={(e) => set("db_host", e.target.value)}
-                  placeholder="db.exemplo.com"
-                />
-              </Field>
-              <Field label="Porta">
-                <input
-                  className={inputCls}
-                  type="number"
-                  value={form.db_port}
-                  onChange={(e) => set("db_port", e.target.value)}
-                  placeholder="3306"
-                />
-              </Field>
-              <Field label="Nome do banco">
-                <input
-                  className={inputCls}
-                  value={form.db_name}
-                  onChange={(e) => set("db_name", e.target.value)}
-                  placeholder="mautic_db"
-                />
-              </Field>
-              <Field label="Usuário">
-                <input
-                  className={inputCls}
-                  value={form.db_user}
-                  onChange={(e) => set("db_user", e.target.value)}
-                  placeholder="db_user"
-                />
-              </Field>
-              <Field label="Senha">
-                <input
-                  className={inputCls}
-                  type="password"
-                  value={form.db_password}
-                  onChange={(e) => set("db_password", e.target.value)}
-                  placeholder={MESSAGES.placeholders.password}
-                />
-              </Field>
-            </div>
+        {/* Banco de Dados (MySQL) */}
+        <div>
+          <SectionTitle>Banco de Dados (MySQL)</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Host">
+              <input
+                className={inputCls}
+                value={form.db_host}
+                onChange={(e) => set("db_host", e.target.value)}
+                placeholder="db.exemplo.com"
+              />
+            </Field>
+            <Field label="Porta">
+              <input
+                className={inputCls}
+                type="number"
+                value={form.db_port}
+                onChange={(e) => set("db_port", e.target.value)}
+                placeholder="3306"
+              />
+            </Field>
+            <Field label="Nome do banco">
+              <input
+                className={inputCls}
+                value={form.db_name}
+                onChange={(e) => set("db_name", e.target.value)}
+                placeholder="mautic_db"
+              />
+            </Field>
+            <Field label="Usuário">
+              <input
+                className={inputCls}
+                value={form.db_user}
+                onChange={(e) => set("db_user", e.target.value)}
+                placeholder="db_user"
+              />
+            </Field>
+            <Field label={isEdit ? "Senha do DB (deixe vazio para manter)" : "Senha"}>
+              <input
+                className={inputCls}
+                type="password"
+                value={form.db_password}
+                onChange={(e) => set("db_password", e.target.value)}
+                placeholder={MESSAGES.placeholders.password}
+              />
+            </Field>
           </div>
-        )}
+        </div>
       </form>
     </Modal>
   );
