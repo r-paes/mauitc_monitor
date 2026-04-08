@@ -43,14 +43,20 @@ def upgrade() -> None:
 
     # ── 2. Criar ENUM service_type e tabela instance_services ───────────────
 
-    service_type_enum = sa.Enum("database", "crons", "web", name="service_type", create_type=False)
-    service_type_enum.create(op.get_bind(), checkfirst=True)
+    # Usa DO $$ para criar ENUM apenas se não existir (PostgreSQL nativo)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE service_type AS ENUM ('database', 'crons', 'web');
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$
+    """)
 
     op.create_table(
         "instance_services",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("instance_id", UUID(as_uuid=True), sa.ForeignKey("instances.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("service_type", service_type_enum, nullable=False),
+        sa.Column("service_type", sa.Enum("database", "crons", "web", name="service_type", create_type=False), nullable=False),
         sa.Column("container_name", sa.String(200), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
