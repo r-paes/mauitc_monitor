@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { MESSAGES } from "@/lib/constants/ui";
 import { useDeleteInstance } from "@/lib/hooks/useInstances";
-import { useServiceStatus } from "@/lib/hooks/useVps";
+import { useServiceStatus, useVpsMetrics } from "@/lib/hooks/useVps";
 import type { Instance, InstanceService } from "@/lib/api/instances";
-import type { ServiceStatusEntry } from "@/lib/api/vps";
+import type { ServiceStatusEntry, VpsMetric } from "@/lib/api/vps";
 
 interface Props {
   data: Instance[];
@@ -75,6 +75,30 @@ export function InstancesTable({ data, isLoading, onEdit }: Props) {
   const [deleting, setDeleting] = useState<Instance | null>(null);
   const { mutate: removeInstance, isPending } = useDeleteInstance();
   const { data: serviceStatuses } = useServiceStatus();
+  const { data: vpsMetrics } = useVpsMetrics();
+
+  // Métrica mais recente por vps_id
+  const latestMetricByVps = (vpsMetrics ?? []).reduce<Record<string, VpsMetric>>((acc, m) => {
+    if (!acc[m.vps_id]) acc[m.vps_id] = m;
+    return acc;
+  }, {});
+
+  function getVpsStatus(row: Instance): { variant: "ok" | "warning" | "critical" | "neutral"; label: string } {
+    if (!row.vps_id) return { variant: "neutral", label: "Sem VPS" };
+    const metric = latestMetricByVps[row.vps_id];
+    if (!metric) return { variant: "warning", label: "Sem dados" };
+    if (
+      (metric.cpu_percent ?? 0) >= 90 ||
+      (metric.memory_percent ?? 0) >= 90 ||
+      (metric.disk_percent ?? 0) >= 90
+    ) return { variant: "critical", label: "Crítico" };
+    if (
+      (metric.cpu_percent ?? 0) >= 75 ||
+      (metric.memory_percent ?? 0) >= 75 ||
+      (metric.disk_percent ?? 0) >= 75
+    ) return { variant: "warning", label: "Atenção" };
+    return { variant: "ok", label: "Online" };
+  }
 
   function handleConfirmDelete() {
     if (!deleting) return;
@@ -95,6 +119,14 @@ export function InstancesTable({ data, isLoading, onEdit }: Props) {
       render: (row: Instance) => (
         <span className="text-xs text-[var(--color-text-muted)]">{row.url}</span>
       ),
+    },
+    {
+      key: "status",
+      header: "Status VPS",
+      render: (row: Instance) => {
+        const { variant, label } = getVpsStatus(row);
+        return <Badge variant={variant} dot>{label}</Badge>;
+      },
     },
     {
       key: "vps",
